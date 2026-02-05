@@ -4,6 +4,14 @@ Schema Codegen will generate TypeScript types for your GraphQL schemas, making i
 
 ## Installation
 
+Install this with your favorite package manager!
+
+**Warning**: I haven't actually published this yet. :)
+
+```bash
+npm install --save-dev @harperfast/schema-codegen
+```
+
 Drop this in your Harper application's config.yaml:
 
 ```yaml
@@ -60,4 +68,22 @@ declare module 'harperdb' {
 		Tracks: { new(identifier: Id, source: Track): Resource<Track> };
 	};
 }
+```
+
+## Development
+
+This code uses type stripping, so as long as you use a compatible version of Node, nothing needs to be compiled.
+
+To use this in an application, first link it:
+
+```bash
+git clone git@github.com:HarperFast/schema-codegen.git
+cd schema-codegen
+npm link
+```
+
+Then cd to your awesome application you want to test this with:
+```bash
+cd ~/my-awesome-app
+npm link @harperfast/schema-codegen
 ```

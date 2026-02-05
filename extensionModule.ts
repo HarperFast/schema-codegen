@@ -11,7 +11,8 @@ export const suppressHandleApplicationWarning = true;
 export async function handleApplication(scope: Scope) {
 	// TODO: Look at scope, er, config? to figure out schemas.
 	// TODO: Use the scope for file change detection. Should we use our files config like other applications?
-	// TODO: Determine if we are in dev mode and should actually run.
+	// TODO: Determine if we are in dev mode and should watch for changes?
+	// TODO: Allow turning off watching via config.
 	setLogger(scope.logger);
 	const watchedDir = './';
 	const allTables = new Map();

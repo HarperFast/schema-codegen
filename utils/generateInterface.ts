@@ -1,30 +1,28 @@
-import type { FieldDefinitionNode, ObjectTypeDefinitionNode } from 'graphql';
+import type { Table } from 'harperdb';
 import { isNullable } from './isNullable.ts';
 import { mapType } from './mapType.ts';
 import { singularize } from './singularize.ts';
 
-export function generateInterface(node: ObjectTypeDefinitionNode) {
-	const plural = node.name.value;
+export function generateInterface(table: Table) {
+	const plural = table.tableName;
 	const singular = singularize(plural);
 	const isDifferent = plural !== singular;
 
 	let code = `\nexport interface ${singular} {\n`;
-	const primaryKeys = [];
-	if (node.fields) {
-		for (const field of node.fields) {
-			const type = mapType(field.type as unknown as FieldDefinitionNode);
-			const primaryKey = field.directives && field.directives.some(d => d.name.value === 'primaryKey');
-			const nullable = !primaryKey && isNullable(field.type as unknown as FieldDefinitionNode);
-			code += `\t${field.name.value}${nullable ? '?' : ''}: ${type};\n`;
-			if (primaryKey) {
-				primaryKeys.push(field.name.value);
-			}
+	const primaryKeys: string[] = [];
+	for (const attribute of table.attributes || []) {
+		const type = mapType(attribute);
+		const primaryKey = !!attribute.isPrimaryKey;
+		const nullable = !primaryKey && isNullable(attribute);
+		code += `\t${attribute.name}${nullable ? '?' : ''}: ${type};\n`;
+		if (primaryKey) {
+			primaryKeys.push(attribute.name!);
 		}
 	}
 	code += `}\n\n`;
 
 	const hasPks = primaryKeys.length > 0;
-	const pks = hasPks ? primaryKeys.map(pk => `'${pk}'`).join(' | ') : null;
+	const pks = hasPks ? primaryKeys.map((pk) => `'${pk}'`).join(' | ') : null;
 
 	if (hasPks) {
 		code += `export type New${singular} = Omit<${singular}, ${pks}>;\n`;

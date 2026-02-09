@@ -1,6 +1,7 @@
-import type { FieldDefinitionNode } from 'graphql';
-import type { Kind } from 'graphql/language/kinds';
+import type { Attribute } from 'harperdb';
 
-export function isNullable(type: FieldDefinitionNode) {
-	return type.kind !== 'NonNullType' as Kind;
+export function isNullable(attribute: Attribute) {
+	// Primary keys are always required
+	if (attribute.isPrimaryKey) return false;
+	return !!attribute.nullable || attribute.nullable === undefined;
 }

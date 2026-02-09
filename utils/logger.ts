@@ -1,3 +1,4 @@
+// TODO: This type will be exported from core soon.
 export interface Logger {
 	notify: (...args: any[]) => void;
 	fatal: (...args: any[]) => void;

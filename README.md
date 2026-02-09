@@ -38,7 +38,7 @@ Next to it, a management.graphql.ts file will get generated with this:
 /**
  Generated from schemas/music.graphql
  Manual changes will be lost!
- > npm run generate
+ > harper dev .
  */
 export interface Track {
 	id: string;
@@ -58,7 +58,7 @@ An ambient declaration will also be generated in a top level tables.d.ts to enha
 /**
  Generated from your schema files
  Manual changes will be lost!
- > npm run generate
+ > harper dev .
  */
 import type { Resource } from 'harperdb/v2';
 import type { Album, Albums, Track, Tracks } from './schemas/music.graphql';

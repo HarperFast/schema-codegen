@@ -1,42 +1,40 @@
 import fs from 'fs';
 import path from 'path';
 import { getLogger } from './logger.ts';
-import type { Table } from './table.ts';
+import type { TableMeta } from './tableMeta.ts';
 
-export function generateTablesDTS(schemasDir: string, allTables: Map<string, Table[]>) {
+export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: string, tables: TableMeta[]) {
 	let content = `/**
  Generated from your schema files
  Manual changes will be lost!
- > npm run generate
+ > harper dev .
  */
 `;
-	content += `import type { Resource } from 'harperdb/v2';\n`;
-	for (const [fullPath, tables] of allTables.entries()) {
-		if (tables.length === 0) continue;
-		const relativePath = './' + path.relative(schemasDir, fullPath);
-		const namesToImport = new Set();
-		for (const table of tables) {
-			namesToImport.add(table.singular);
-			if (table.plural !== table.singular) {
-				namesToImport.add(table.plural);
-			}
-		}
-		content += `import type { ${Array.from(namesToImport).join(', ')} } from '${relativePath}';\n`;
+	content += `import type { Table } from 'harperdb';\n`;
+	// Build a single import of all relevant types from schemaTypesPath
+	const namesToImport = new Set<string>();
+	for (const table of tables) {
+		namesToImport.add(table.singular);
+	}
+	if (namesToImport.size > 0) {
+		const fromPathRaw = path.relative(path.dirname(globalTypesPath), schemaTypesPath);
+		const fromPath = fromPathRaw.startsWith('.') ? fromPathRaw : './' + fromPathRaw;
+		content += `import type { ${Array.from(namesToImport).join(', ')} } from '${fromPath}';\n`;
 	}
 	content += '\n';
 	content += `declare module 'harperdb' {\n`;
 	content += `\texport const tables: {\n`;
-	for (const tables of allTables.values()) {
-		for (const table of tables) {
-			content += `\t\t${table.plural}: { new(identifier: Id, source: ${table.singular}): Resource<${table.singular}> };\n`;
-		}
+	for (const table of tables) {
+		content += `\t\t${table.plural}: { new(...args: any[]): Table<${table.singular}> };\n`;
 	}
 	content += `\t};\n`;
 	content += `}\n`;
-	const tablesRef = path.join(schemasDir, 'tables.d.ts');
-	const existingContent = fs.existsSync(tablesRef) && fs.readFileSync(tablesRef, 'utf8');
+	const outPath = globalTypesPath;
+	const dir = path.dirname(outPath);
+	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	const existingContent = fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8');
 	if (existingContent !== content) {
-		fs.writeFileSync(tablesRef, content, 'utf8');
-		getLogger().debug(`Updated types in ${tablesRef}`);
+		fs.writeFileSync(outPath, content, 'utf8');
+		getLogger().debug(`Updated types in ${outPath}`);
 	}
 }

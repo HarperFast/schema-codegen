@@ -1,4 +1,4 @@
-export interface Table {
+export interface TableMeta {
 	singular: string;
 	plural: string;
 }

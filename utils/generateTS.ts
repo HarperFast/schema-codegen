@@ -1,31 +1,20 @@
-import { parse, Source } from 'graphql';
+import type { Table } from 'harperdb';
 import { generateInterface } from './generateInterface.ts';
 import { singularize } from './singularize.ts';
+import type { TableMeta } from './tableMeta.ts';
 
-export function generateTS(graphqlContent: string | Source, fileName: string) {
-	try {
-		const ast = parse(graphqlContent);
-		let tsCode = `/**
- Generated from ${fileName}
+export function generateTSFromTables(tablesInput: Table[], label: string = 'HarperDB schemas') {
+	let tsCode = `/**
+ Generated from ${label}
  Manual changes will be lost!
- > npm run generate
+ > harper dev .
  */`;
-		const tables = [];
+	const tables: TableMeta[] = [];
 
-		for (const definition of ast.definitions) {
-			if (definition.kind === 'ObjectTypeDefinition') {
-				tsCode += generateInterface(definition);
-				if (definition.directives && definition.directives.some(d => d.name.value === 'table')) {
-					tables.push({
-						plural: definition.name.value,
-						singular: singularize(definition.name.value),
-					});
-				}
-			}
-		}
-
-		return { tsCode, tables };
-	} catch (e) {
-		return { tsCode: `// Error parsing GraphQL: ${e}\nexport {};`, tables: [] };
+	for (const table of tablesInput) {
+		tsCode += generateInterface(table);
+		tables.push({ plural: table.tableName, singular: singularize(table.tableName) });
 	}
+
+	return { tsCode, tables };
 }

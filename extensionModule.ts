@@ -18,6 +18,10 @@ export async function handleApplication(scope: Scope) {
 	const globalTypes = (scope.options.get(['globalTypes']) as string) || './schema.globalTypes.d.ts';
 	const schemaTypes = (scope.options.get(['schemaTypes']) as string) || './schema.types.ts';
 
+	if (shouldWatch) {
+		scope.on('close', scopeClosed);
+	}
+
 	// Do not await this.
 	sleep(500)
 		.then(() => {
@@ -26,18 +30,29 @@ export async function handleApplication(scope: Scope) {
 
 			if (shouldWatch) {
 				// Watch for schema/database changes via events
-				scope.databaseEvents.on('updateTable', () => {
-					regenerateAll(globalTypes, schemaTypes);
-				});
-
-				scope.databaseEvents.on('dropTable', () => {
-					regenerateAll(globalTypes, schemaTypes);
-				});
-
-				scope.databaseEvents.on('dropDatabase', () => {
-					regenerateAll(globalTypes, schemaTypes);
-				});
+				scope.databaseEvents.on('updateTable', updateTable);
+				scope.databaseEvents.on('dropTable', dropTable);
+				scope.databaseEvents.on('dropDatabase', dropDatabase);
 			}
-	});
+		});
+
+	function updateTable() {
+		regenerateAll(globalTypes, schemaTypes);
+	}
+
+	function dropTable() {
+		regenerateAll(globalTypes, schemaTypes);
+	}
+
+	function dropDatabase() {
+		regenerateAll(globalTypes, schemaTypes);
+	}
+
+	function scopeClosed() {
+		scope.databaseEvents.off('updateTable', updateTable);
+		scope.databaseEvents.off('dropTable', dropTable);
+		scope.databaseEvents.off('dropDatabase', dropDatabase);
+		scope.off('close', scopeClosed);
+	}
 }
 

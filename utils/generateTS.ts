@@ -3,7 +3,7 @@ import { generateInterface } from './generateInterface.ts';
 import { singularize } from './singularize.ts';
 import type { TableMeta } from './tableMeta.ts';
 
-export function generateTSFromTables(tablesInput: Table[], label: string = 'HarperDB schemas') {
+export function generateTSFromTables(tablesInput: (Table & { databaseName: string })[], label: string = 'HarperDB schemas') {
 	let tsCode = `/**
  Generated from ${label}
  Manual changes will be lost!
@@ -13,7 +13,10 @@ export function generateTSFromTables(tablesInput: Table[], label: string = 'Harp
 
 	for (const table of tablesInput) {
 		tsCode += generateInterface(table);
-		tables.push({ plural: table.tableName, singular: singularize(table.tableName) });
+		const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+		const plural = `${dbPrefix}${table.tableName}`;
+		const singular = `${dbPrefix}${singularize(table.tableName)}`;
+		tables.push({ plural, singular, databaseName: table.databaseName });
 	}
 
 	return { tsCode, tables };

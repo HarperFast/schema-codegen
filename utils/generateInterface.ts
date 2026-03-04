@@ -3,9 +3,12 @@ import { isNullable } from './isNullable.ts';
 import { mapType } from './mapType.ts';
 import { singularize } from './singularize.ts';
 
-export function generateInterface(table: Table) {
-	const plural = table.tableName;
-	const singular = singularize(plural);
+export function generateInterface(table: Table & { databaseName?: string }) {
+	const pluralRaw = table.tableName;
+	const singularRaw = singularize(pluralRaw);
+	const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+	const plural = `${dbPrefix}${pluralRaw}`;
+	const singular = `${dbPrefix}${singularRaw}`;
 	const isDifferent = plural !== singular;
 
 	let code = `\nexport interface ${singular} {\n`;
@@ -25,7 +28,7 @@ export function generateInterface(table: Table) {
 	const pks = hasPks ? primaryKeys.map((pk) => `'${pk}'`).join(' | ') : null;
 
 	if (hasPks) {
-		code += `export type New${singular} = Omit<${singular}, ${pks}>;\n`;
+		code += `export type ${dbPrefix}New${singularRaw} = Omit<${singular}, ${pks}>;\n`;
 	}
 
 	if (isDifferent) {
@@ -38,7 +41,7 @@ export function generateInterface(table: Table) {
 	}
 	code += `export type ${singular}Records = ${singular}[];\n`;
 	if (hasPks) {
-		code += `export type New${singular}Record = Omit<${singular}, ${pks}>;\n`;
+		code += `export type ${dbPrefix}New${singularRaw}Record = Omit<${singular}, ${pks}>;\n`;
 	}
 
 	return code;

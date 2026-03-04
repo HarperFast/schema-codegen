@@ -22,12 +22,37 @@ export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: stri
 		content += `import type { ${Array.from(namesToImport).join(', ')} } from '${fromPath}';\n`;
 	}
 	content += '\n';
-	content += `declare module 'harperdb' {\n`;
-	content += `\texport const tables: {\n`;
+
+	const dbMap = new Map<string, TableMeta[]>();
 	for (const table of tables) {
+		if (!dbMap.has(table.databaseName)) {
+			dbMap.set(table.databaseName, []);
+		}
+		dbMap.get(table.databaseName)!.push(table);
+	}
+
+	content += `declare module 'harperdb' {\n`;
+
+	// Export top-level tables for 'data' database
+	const dataTables = dbMap.get('data') || [];
+	content += `\texport const tables: {\n`;
+	for (const table of dataTables) {
 		content += `\t\t${table.plural}: { new(...args: any[]): Table<${table.singular}> };\n`;
 	}
+	content += `\t};\n\n`;
+
+	// Export namespaced databases
+	content += `\texport const databases: {\n`;
+	for (const [dbName, dbTables] of dbMap.entries()) {
+		content += `\t\t${dbName}: {\n`;
+		for (const table of dbTables) {
+			const pluralRaw = table.plural.startsWith(`${dbName}_`) ? table.plural.slice(dbName.length + 1) : table.plural;
+			content += `\t\t\t${pluralRaw}: { new(...args: any[]): Table<${table.singular}> };\n`;
+		}
+		content += `\t\t};\n`;
+	}
 	content += `\t};\n`;
+
 	content += `}\n`;
 	const outPath = globalTypesPath;
 	const dir = path.dirname(outPath);

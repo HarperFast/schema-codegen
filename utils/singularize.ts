@@ -3,7 +3,20 @@ export function singularize(word: string): string {
 
 	// Nouns that are the same in singular and plural or should be treated as unchanged here
 	const noChange = new Set([
-		'moose', 'series', 'species', 'sheep', 'fish', 'deer', 'news', 'chassis', 'aircraft', 'bison', 'salmon', 'trout', 'swine', 'media',
+		'moose',
+		'series',
+		'species',
+		'sheep',
+		'fish',
+		'deer',
+		'news',
+		'chassis',
+		'aircraft',
+		'bison',
+		'salmon',
+		'trout',
+		'swine',
+		'media',
 	]);
 	if (noChange.has(lower)) {
 		return word;

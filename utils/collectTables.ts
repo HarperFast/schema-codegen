@@ -7,7 +7,7 @@ export function collectTables() {
 		const tables = (hdbDatabases as any)[dbName];
 		for (const tableName of Object.keys(tables || {})) {
 			const TableClass = tables[tableName];
-			if (!TableClass?.attributes) continue;
+			if (!TableClass?.attributes) { continue; }
 			(TableClass as any).databaseName = dbName;
 			tablesList.push(TableClass as Table & { databaseName: string });
 		}

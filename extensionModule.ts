@@ -56,4 +56,3 @@ export async function handleApplication(scope: Scope) {
 		scope.off('close', scopeClosed);
 	}
 }
-

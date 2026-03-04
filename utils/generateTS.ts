@@ -3,7 +3,10 @@ import { generateInterface } from './generateInterface.ts';
 import { singularize } from './singularize.ts';
 import type { TableMeta } from './tableMeta.ts';
 
-export function generateTSFromTables(tablesInput: (Table & { databaseName: string })[], label: string = 'HarperDB schemas') {
+export function generateTSFromTables(
+	tablesInput: (Table & { databaseName: string })[],
+	label: string = 'HarperDB schemas',
+) {
 	let tsCode = `/**
  Generated from ${label}
  Manual changes will be lost!

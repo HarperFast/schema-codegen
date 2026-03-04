@@ -2,7 +2,7 @@ import type { Attribute } from 'harperdb';
 import { singularize } from './singularize.ts';
 
 function mapObjectType(properties: Attribute[] | undefined): string {
-	if (!properties || properties.length === 0) return 'Record<string, any>';
+	if (!properties || properties.length === 0) { return 'Record<string, any>'; }
 	const fields = properties
 		.map((prop) => {
 			const optional = prop.isPrimaryKey ? false : !!prop.nullable;

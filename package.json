@@ -1,9 +1,34 @@
 {
-  "name": "@harperfast/schema-codegen",
-  "version": "0.0.1",
-  "type": "module",
-  "devDependencies": {
-    "@types/node": "^24.10.11",
-    "@types/react": "^19.2.10"
-  }
+	"name": "@harperfast/schema-codegen",
+	"version": "1.0.0",
+	"type": "module",
+	"scripts": {
+		"commitlint": "commitlint --edit",
+		"format:check": "dprint check",
+		"format:fix": "dprint fmt",
+		"format:staged": "dprint check --staged --allow-no-files",
+		"lint:check": "oxlint .",
+		"lint:fix": "oxlint . --fix",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"test:watch": "vitest"
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^20.0.0",
+		"@commitlint/config-conventional": "^20.0.0",
+		"@semantic-release/commit-analyzer": "^13.0.1",
+		"@semantic-release/git": "^10.0.1",
+		"@semantic-release/github": "^12.0.2",
+		"@semantic-release/npm": "^13.1.1",
+		"@semantic-release/release-notes-generator": "^14.1.0",
+		"@types/node": "^24.10.11",
+		"@types/react": "^19.2.10",
+		"@vitest/coverage-v8": "^4.0.18",
+		"conventional-changelog-conventionalcommits": "^9.1.0",
+		"dprint": "^0.52.0",
+		"harperdb": "^4.7.20",
+		"oxlint": "^1.51.0",
+		"semantic-release": "^25.0.2",
+		"vitest": "^4.0.18"
+	}
 }

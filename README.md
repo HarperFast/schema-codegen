@@ -26,6 +26,7 @@ When you `harper dev`, it will watch any file ending in .graphql.
 ## Example
 
 For example, here's a tracks.graphql schema:
+
 ```graphql
 type Tracks @table @sealed {
 	id: ID @primaryKey
@@ -56,6 +57,7 @@ export type NewTrackRecord = Omit<Track, 'id'>;
 ```
 
 An ambient declaration will also be generated in a top level globalTypes.d.ts to enhance the global `tables` and `databases` from Harper:
+
 ```typescript
 /**
  Generated from your schema files
@@ -90,6 +92,7 @@ npm link
 ```
 
 Then cd to your awesome application you want to test this with:
+
 ```bash
 cd ~/my-awesome-app
 npm link @harperfast/schema-codegen

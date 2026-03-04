@@ -21,6 +21,14 @@ Drop this in your Harper application's config.yaml:
   schemaTypes: 'schemas/types.ts'
 ```
 
+Alternatively, if you are using pure JavaScript, you can generate JSDoc instead:
+
+```yaml
+'@harperfast/schema-codegen':
+  package: '@harperfast/schema-codegen'
+  jsdoc: 'schemas/jsdocTypes.js'
+```
+
 When you `harper dev`, it will watch any file ending in .graphql.
 
 ## Example

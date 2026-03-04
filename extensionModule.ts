@@ -12,7 +12,6 @@ export async function handleApplication(scope: Scope) {
 		scope.logger.trace?.('@harperfast/schema-codegen skipping execution outside of dev mode');
 		return;
 	}
-	scope.logger.error?.('@harperfast/schema-codegen running!');
 
 	const watchConfig = scope.options.get(['watch']);
 	const shouldWatch = watchConfig === true || watchConfig === undefined;

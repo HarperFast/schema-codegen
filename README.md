@@ -17,6 +17,8 @@ Drop this in your Harper application's config.yaml:
 ```yaml
 '@harperfast/schema-codegen':
   package: '@harperfast/schema-codegen'
+  globalTypes: 'schemas/globalTypes.d.ts'
+  schemaTypes: 'schemas/types.ts'
 ```
 
 When you `harper dev`, it will watch any file ending in .graphql.
@@ -36,7 +38,7 @@ Next to it, a management.graphql.ts file will get generated with this:
 
 ```typescript
 /**
- Generated from schemas/music.graphql
+ Generated from HarperDB schema
  Manual changes will be lost!
  > harper dev .
  */
@@ -53,19 +55,24 @@ export type TrackRecords = Track[];
 export type NewTrackRecord = Omit<Track, 'id'>;
 ```
 
-An ambient declaration will also be generated in a top level tables.d.ts to enhance the global `tables` from Harper:
+An ambient declaration will also be generated in a top level globalTypes.d.ts to enhance the global `tables` and `databases` from Harper:
 ```typescript
 /**
  Generated from your schema files
  Manual changes will be lost!
  > harper dev .
  */
-import type { Resource } from 'harperdb/v2';
-import type { Album, Albums, Track, Tracks } from './schemas/music.graphql';
+import type { Table } from 'harperdb';
+import type { Track } from './types.ts';
 
 declare module 'harperdb' {
 	export const tables: {
-		Tracks: { new(identifier: Id, source: Track): Resource<Track> };
+		Tracks: { new(...args: any[]): Table<Track> };
+	};
+	export const databases: {
+		data: {
+			Tracks: { new(...args: any[]): Table<Track> };
+		};
 	};
 }
 ```

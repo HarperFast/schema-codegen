@@ -35,6 +35,6 @@ export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: stri
 	const existingContent = fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8');
 	if (existingContent !== content) {
 		fs.writeFileSync(outPath, content, 'utf8');
-		getLogger().debug(`Updated types in ${outPath}`);
+		getLogger().debug?.(`Updated types in ${outPath}`);
 	}
 }

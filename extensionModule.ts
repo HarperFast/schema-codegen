@@ -17,6 +17,7 @@ export async function handleApplication(scope: Scope) {
 	const shouldWatch = watchConfig === true || watchConfig === undefined;
 	const globalTypes = (scope.options.get(['globalTypes']) as string) || './schema.globalTypes.d.ts';
 	const schemaTypes = (scope.options.get(['schemaTypes']) as string) || './schema.types.ts';
+	const jsdoc = scope.options.get(['jsdoc']) as string | undefined;
 
 	if (shouldWatch) {
 		scope.on('close', scopeClosed);
@@ -26,7 +27,7 @@ export async function handleApplication(scope: Scope) {
 	sleep(500)
 		.then(() => {
 			// Initial generation
-			regenerateAll(globalTypes, schemaTypes);
+			regenerateAll(globalTypes, schemaTypes, jsdoc);
 
 			if (shouldWatch) {
 				// Watch for schema/database changes via events
@@ -37,15 +38,15 @@ export async function handleApplication(scope: Scope) {
 		});
 
 	function updateTable() {
-		regenerateAll(globalTypes, schemaTypes);
+		regenerateAll(globalTypes, schemaTypes, jsdoc);
 	}
 
 	function dropTable() {
-		regenerateAll(globalTypes, schemaTypes);
+		regenerateAll(globalTypes, schemaTypes, jsdoc);
 	}
 
 	function dropDatabase() {
-		regenerateAll(globalTypes, schemaTypes);
+		regenerateAll(globalTypes, schemaTypes, jsdoc);
 	}
 
 	function scopeClosed() {

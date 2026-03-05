@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateJSDoc } from './generateJSDoc.ts';
+import { generateJSDoc } from './generateJSDoc.js';
 
 describe('generateJSDoc', () => {
 	it('should generate JSDoc for a simple table', () => {
@@ -12,7 +12,7 @@ describe('generateJSDoc', () => {
 				{ name: 'mp3', type: 'Blob', nullable: true },
 			],
 		};
-		const code = generateJSDoc(table as any);
+		const code = generateJSDoc(table);
 		expect(code).toContain('@typedef {Object} Track');
 		expect(code).toContain('@property {string} id');
 		expect(code).toContain('@property {string} name');
@@ -30,7 +30,7 @@ describe('generateJSDoc', () => {
 				{ name: 'username', type: 'String' },
 			],
 		};
-		const code = generateJSDoc(table as any);
+		const code = generateJSDoc(table);
 		expect(code).toContain('@typedef {Object} auth_User');
 		expect(code).toContain('@typedef {auth_User[]} auth_Users');
 		expect(code).toContain("@typedef {Omit<auth_User, 'id'>} auth_NewUser");

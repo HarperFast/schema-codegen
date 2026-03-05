@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { singularize } from './singularize.ts';
+import { singularize } from './singularize.js';
 
 describe('singularize', () => {
 	it('should return the same word for nouns that do not change', () => {

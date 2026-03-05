@@ -1,7 +1,11 @@
-import type { Attribute } from 'harperdb';
-import { singularize } from './singularize.ts';
+/** @typedef {import('harperdb').Attribute} Attribute */
+import { singularize } from './singularize.js';
 
-function mapObjectType(properties: Attribute[] | undefined): string {
+/**
+ * @param {Attribute[] | undefined} properties
+ * @returns {string}
+ */
+function mapObjectType(properties) {
 	if (!properties || properties.length === 0) { return 'Record<string, any>'; }
 	const fields = properties
 		.map((prop) => {
@@ -12,7 +16,11 @@ function mapObjectType(properties: Attribute[] | undefined): string {
 	return `{ ${fields} }`;
 }
 
-export function mapType(attribute: Attribute): string {
+/**
+ * @param {Attribute} attribute
+ * @returns {string}
+ */
+export function mapType(attribute) {
 	const name = attribute?.type || 'Any';
 	switch (name) {
 		case 'String':

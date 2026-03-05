@@ -1,6 +1,6 @@
 {
 	"name": "@harperfast/schema-codegen",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"type": "module",
 	"scripts": {
 		"commitlint": "commitlint --edit",
@@ -14,10 +14,10 @@
 		"test:watch": "vitest"
 	},
 	"files": [
-		"extensionModule.ts",
+		"extensionModule.js",
 		"config.yaml",
 		"utils/",
-		"!utils/**/*.test.ts"
+		"!utils/**/*.test.js"
 	],
 	"devDependencies": {
 		"@commitlint/cli": "^20.0.0",

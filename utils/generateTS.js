@@ -1,18 +1,24 @@
-import type { Table } from 'harperdb';
-import { generateInterface } from './generateInterface.ts';
-import { singularize } from './singularize.ts';
-import type { TableMeta } from './tableMeta.ts';
+/** @typedef {import('harperdb').Table} Table */
+/** @import { TableMeta } from './tableMeta.js' */
+import { generateInterface } from './generateInterface.js';
+import { singularize } from './singularize.js';
 
+/**
+ * @param {(Table & { databaseName: string })[]} tablesInput
+ * @param {string} label
+ * @returns {{ tsCode: string, tables: TableMeta[] }}
+ */
 export function generateTSFromTables(
-	tablesInput: (Table & { databaseName: string })[],
-	label: string = 'HarperDB schemas',
+	tablesInput,
+	label = 'HarperDB schemas',
 ) {
 	let tsCode = `/**
  Generated from ${label}
  Manual changes will be lost!
  > harper dev .
  */`;
-	const tables: TableMeta[] = [];
+	/** @type {TableMeta[]} */
+	const tables = [];
 
 	for (const table of tablesInput) {
 		tsCode += generateInterface(table);

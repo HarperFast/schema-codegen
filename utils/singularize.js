@@ -1,4 +1,8 @@
-export function singularize(word: string): string {
+/**
+ * @param {string} word
+ * @returns {string}
+ */
+export function singularize(word) {
 	const lower = word.toLowerCase();
 
 	// Nouns that are the same in singular and plural or should be treated as unchanged here
@@ -23,7 +27,8 @@ export function singularize(word: string): string {
 	}
 
 	// Irregular plurals not covered by suffix rules
-	const irregular: Record<string, string> = {
+	/** @type {Record<string, string>} */
+	const irregular = {
 		people: 'person',
 		men: 'man',
 		women: 'woman',

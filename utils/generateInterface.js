@@ -1,9 +1,12 @@
-import type { Table } from 'harperdb';
-import { isNullable } from './isNullable.ts';
-import { mapType } from './mapType.ts';
-import { singularize } from './singularize.ts';
+/** @typedef {import('harperdb').Table} Table */
+import { isNullable } from './isNullable.js';
+import { mapType } from './mapType.js';
+import { singularize } from './singularize.js';
 
-export function generateInterface(table: Table & { databaseName?: string }) {
+/**
+ * @param {Table & { databaseName?: string }} table
+ */
+export function generateInterface(table) {
 	const pluralRaw = table.tableName;
 	const singularRaw = singularize(pluralRaw);
 	const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
@@ -12,14 +15,15 @@ export function generateInterface(table: Table & { databaseName?: string }) {
 	const isDifferent = plural !== singular;
 
 	let code = `\nexport interface ${singular} {\n`;
-	const primaryKeys: string[] = [];
+	/** @type {string[]} */
+	const primaryKeys = [];
 	for (const attribute of table.attributes || []) {
 		const type = mapType(attribute);
 		const primaryKey = !!attribute.isPrimaryKey;
 		const nullable = !primaryKey && isNullable(attribute);
 		code += `\t${attribute.name}${nullable ? '?' : ''}: ${type};\n`;
 		if (primaryKey) {
-			primaryKeys.push(attribute.name!);
+			primaryKeys.push(attribute.name);
 		}
 	}
 	code += `}\n\n`;

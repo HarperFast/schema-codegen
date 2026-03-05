@@ -1,11 +1,14 @@
-import type { Scope } from 'harperdb';
-import { setLogger } from './utils/logger.ts';
-import { regenerateAll } from './utils/regenerateAll.ts';
-import { sleep } from './utils/sleep.ts';
+/** @typedef {import('harperdb').Scope} Scope */
+import { setLogger } from './utils/logger.js';
+import { regenerateAll } from './utils/regenerateAll.js';
+import { sleep } from './utils/sleep.js';
 
 export const suppressHandleApplicationWarning = true;
 
-export async function handleApplication(scope: Scope) {
+/**
+ * @param {Scope} scope
+ */
+export async function handleApplication(scope) {
 	setLogger(scope.logger);
 
 	if (!process.env.DEV_MODE) {
@@ -15,9 +18,9 @@ export async function handleApplication(scope: Scope) {
 
 	const watchConfig = scope.options.get(['watch']);
 	const shouldWatch = watchConfig === true || watchConfig === undefined;
-	const globalTypes = (scope.options.get(['globalTypes']) as string) || './schema.globalTypes.d.ts';
-	const schemaTypes = (scope.options.get(['schemaTypes']) as string) || './schema.types.ts';
-	const jsdoc = scope.options.get(['jsdoc']) as string | undefined;
+	const globalTypes = /** @type {string} */ (scope.options.get(['globalTypes'])) || './schema.globalTypes.d.ts';
+	const schemaTypes = /** @type {string} */ (scope.options.get(['schemaTypes'])) || './schema.types.ts';
+	const jsdoc = /** @type {string | undefined} */ (scope.options.get(['jsdoc']));
 
 	if (shouldWatch) {
 		scope.on('close', scopeClosed);

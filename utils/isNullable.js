@@ -1,6 +1,9 @@
-import type { Attribute } from 'harperdb';
+/** @typedef {import('harperdb').Attribute} Attribute */
 
-export function isNullable(attribute: Attribute) {
+/**
+ * @param {Attribute} attribute
+ */
+export function isNullable(attribute) {
 	// Primary keys are always required
 	if (attribute.isPrimaryKey) { return false; }
 	return !!attribute.nullable || attribute.nullable === undefined;

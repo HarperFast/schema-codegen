@@ -1,9 +1,14 @@
+/** @import { TableMeta } from './tableMeta.js' */
 import fs from 'fs';
 import path from 'path';
-import { getLogger } from './logger.ts';
-import type { TableMeta } from './tableMeta.ts';
+import { getLogger } from './logger.js';
 
-export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: string, tables: TableMeta[]) {
+/**
+ * @param {string} globalTypesPath
+ * @param {string} schemaTypesPath
+ * @param {TableMeta[]} tables
+ */
+export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	let content = `/**
  Generated from your schema files
  Manual changes will be lost!
@@ -12,7 +17,8 @@ export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: stri
 `;
 	content += `import type { Table } from 'harperdb';\n`;
 	// Build a single import of all relevant types from schemaTypesPath
-	const namesToImport = new Set<string>();
+	/** @type {Set<string>} */
+	const namesToImport = new Set();
 	for (const table of tables) {
 		namesToImport.add(table.singular);
 	}
@@ -23,12 +29,14 @@ export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: stri
 	}
 	content += '\n';
 
-	const dbMap = new Map<string, TableMeta[]>();
+	/** @type {Map<string, TableMeta[]>} */
+	const dbMap = new Map();
 	for (const table of tables) {
 		if (!dbMap.has(table.databaseName)) {
-			dbMap.set(table.databaseName, []);
+			dbMap.set(table.databaseName, [table]);
+		} else {
+			dbMap.get(table.databaseName)?.push(table);
 		}
-		dbMap.get(table.databaseName)!.push(table);
 	}
 
 	content += `declare module 'harperdb' {\n`;
@@ -60,6 +68,6 @@ export function generateTablesDTS(globalTypesPath: string, schemaTypesPath: stri
 	const existingContent = fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8');
 	if (existingContent !== content) {
 		fs.writeFileSync(outPath, content, 'utf8');
-		getLogger().debug?.(`Updated types in ${outPath}`);
+		getLogger()?.debug?.(`Updated types in ${outPath}`);
 	}
 }

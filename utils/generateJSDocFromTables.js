@@ -1,18 +1,23 @@
-import type { Table } from 'harperdb';
-import { generateJSDoc } from './generateJSDoc.ts';
-import { singularize } from './singularize.ts';
-import type { TableMeta } from './tableMeta.ts';
+/** @typedef {import('harperdb').Table} Table */
+/** @import { TableMeta } from './tableMeta.js' */
+import { generateJSDoc } from './generateJSDoc.js';
+import { singularize } from './singularize.js';
 
+/**
+ * @param {(Table & { databaseName: string })[]} tablesInput
+ * @param {string} label
+ */
 export function generateJSDocFromTables(
-	tablesInput: (Table & { databaseName: string })[],
-	label: string = 'HarperDB schemas',
+	tablesInput,
+	label = 'HarperDB schemas',
 ) {
 	let jsCode = `/**
  Generated from ${label}
  Manual changes will be lost!
  > harper dev .
  */`;
-	const tables: TableMeta[] = [];
+	/** @type {TableMeta[]} */
+	const tables = [];
 
 	for (const table of tablesInput) {
 		jsCode += generateJSDoc(table);

@@ -1,7 +1,7 @@
-import type { Table } from 'harperdb';
-import { isNullable } from './isNullable.ts';
-import { mapType } from './mapType.ts';
-import { singularize } from './singularize.ts';
+/** @typedef {import('harperdb').Table} Table */
+import { isNullable } from './isNullable.js';
+import { mapType } from './mapType.js';
+import { singularize } from './singularize.js';
 
 /**
  * Generates JSDoc types for a given HarperDB table.
@@ -13,8 +13,10 @@ import { singularize } from './singularize.ts';
  *  * @property {string} name
  *  * @property {any} [mp3]
  *  *\/
+ *
+ * @param {Table & { databaseName?: string }} table
  */
-export function generateJSDoc(table: Table & { databaseName?: string }) {
+export function generateJSDoc(table) {
 	const pluralRaw = table.tableName;
 	const singularRaw = singularize(pluralRaw);
 	const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
@@ -23,14 +25,14 @@ export function generateJSDoc(table: Table & { databaseName?: string }) {
 	const isDifferent = plural !== singular;
 
 	let code = `\n/**\n * @typedef {Object} ${singular}\n`;
-	const primaryKeys: string[] = [];
+	const primaryKeys = [];
 	for (const attribute of table.attributes || []) {
 		const type = mapType(attribute);
 		const primaryKey = !!attribute.isPrimaryKey;
 		const nullable = !primaryKey && isNullable(attribute);
 		code += ` * @property {${type}} ${nullable ? '[' : ''}${attribute.name}${nullable ? ']' : ''}\n`;
 		if (primaryKey) {
-			primaryKeys.push(attribute.name!);
+			primaryKeys.push(attribute.name);
 		}
 	}
 	code += ` */\n\n`;

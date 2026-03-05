@@ -87,8 +87,6 @@ declare module 'harperdb' {
 
 ## Development
 
-This code uses type stripping, so as long as you use a compatible version of Node, nothing needs to be compiled.
-
 To use this in an application, first link it:
 
 ```bash

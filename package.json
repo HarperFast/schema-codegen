@@ -13,6 +13,12 @@
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest"
 	},
+	"files": [
+		"extensionModule.ts",
+		"config.yaml",
+		"utils/",
+		"!utils/**/*.test.ts"
+	],
 	"devDependencies": {
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",

@@ -6,8 +6,6 @@ Schema Codegen will generate TypeScript types for your GraphQL schemas, making i
 
 Install this with your favorite package manager!
 
-**Warning**: I haven't actually published this yet. :)
-
 ```bash
 npm install --save @harperfast/schema-codegen
 ```

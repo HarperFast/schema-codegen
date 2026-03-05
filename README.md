@@ -1,6 +1,6 @@
 # @HarperFast/Schema-Codegen
 
-Schema Codegen will generate TypeScript types for your GraphQL schemas, making it easier to work with your data in TypeScript applications.
+Schema Codegen will generate TypeScript types for your GraphQL schemas, making it easier to work with your data in TypeScript and JavaScript applications.
 
 ## Installation
 
@@ -9,7 +9,7 @@ Install this with your favorite package manager!
 **Warning**: I haven't actually published this yet. :)
 
 ```bash
-npm install --save-dev @harperfast/schema-codegen
+npm install --save @harperfast/schema-codegen
 ```
 
 Drop this in your Harper application's config.yaml:
@@ -29,7 +29,7 @@ Alternatively, if you are using pure JavaScript, you can generate JSDoc instead:
   jsdoc: 'schemas/jsdocTypes.js'
 ```
 
-When you `harper dev`, it will watch any file ending in .graphql.
+When you `harper dev`, it will generate types based on the schema that's actually in your Harper database. If you change the schema, we will automatically regenerate the types for you.
 
 ## Example
 
@@ -43,7 +43,7 @@ type Tracks @table @sealed {
 }
 ```
 
-Next to it, a management.graphql.ts file will get generated with this:
+Next to it, a schemas/types.ts file will get generated with this:
 
 ```typescript
 /**
@@ -64,7 +64,7 @@ export type TrackRecords = Track[];
 export type NewTrackRecord = Omit<Track, 'id'>;
 ```
 
-An ambient declaration will also be generated in a top level globalTypes.d.ts to enhance the global `tables` and `databases` from Harper:
+An ambient declaration will also be generated in globalTypes.d.ts to enhance the global `tables` and `databases` from Harper:
 
 ```typescript
 /**

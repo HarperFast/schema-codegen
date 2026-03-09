@@ -18,10 +18,8 @@ export async function handleApplication(scope) {
 
 	const watchConfig = scope.options.get(['watch']);
 	const shouldWatch = watchConfig === true || watchConfig === undefined;
-	const globalTypes = /** @type {string} */ (scope.options.get(['globalTypes'])) ||
-	'./schema.globalTypes.d.ts';
-	const schemaTypes = /** @type {string} */ (scope.options.get(['schemaTypes'])) ||
-	'./schema.types.ts';
+	const globalTypes = /** @type {string} */ (scope.options.get(['globalTypes']));
+	const schemaTypes = /** @type {string} */ (scope.options.get(['schemaTypes']));
 	const jsdoc = /** @type {string | undefined} */ (scope.options.get(['jsdoc']));
 
 	if (shouldWatch) {

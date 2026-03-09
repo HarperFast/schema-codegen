@@ -16,9 +16,13 @@ export function regenerateAll(globalTypes, schemaTypes, jsdoc) {
 	if (jsdoc) {
 		const { jsCode } = generateJSDocFromTables(list, 'HarperDB schema');
 		writeIfChanged(path.resolve(jsdoc), jsCode);
-	} else {
-		const { tsCode, tables } = generateTSFromTables(list, 'HarperDB schema');
+	}
+
+	const { tsCode, tables } = generateTSFromTables(list, 'HarperDB schema');
+	if (schemaTypes) {
 		writeIfChanged(path.resolve(schemaTypes), tsCode);
+	}
+	if (globalTypes) {
 		generateTablesDTS(path.resolve(globalTypes), path.resolve(schemaTypes), tables);
 	}
 }

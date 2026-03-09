@@ -8,10 +8,7 @@ import { singularize } from './singularize.js';
  * @param {string} label
  * @returns {{ tsCode: string, tables: TableMeta[] }}
  */
-export function generateTSFromTables(
-	tablesInput,
-	label = 'HarperDB schemas',
-) {
+export function generateTSFromTables(tablesInput, label = 'HarperDB schemas') {
 	let tsCode = `/**
  Generated from ${label}
  Manual changes will be lost!
@@ -22,7 +19,8 @@ export function generateTSFromTables(
 
 	for (const table of tablesInput) {
 		tsCode += generateInterface(table);
-		const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+		const dbPrefix =
+			table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
 		const plural = `${dbPrefix}${table.tableName}`;
 		const singular = `${dbPrefix}${singularize(table.tableName)}`;
 		tables.push({ plural, singular, databaseName: table.databaseName });

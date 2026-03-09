@@ -17,21 +17,25 @@ describe('mapType', () => {
 
 	it('should handle array types', () => {
 		expect(mapType({ type: 'Array' })).toBe('any[]');
-		expect(mapType({
-			type: 'Array',
-			elements: { type: 'String' },
-		})).toBe('string[]');
+		expect(
+			mapType({
+				type: 'Array',
+				elements: { type: 'String' },
+			}),
+		).toBe('string[]');
 	});
 
 	it('should handle object types', () => {
 		expect(mapType({ type: 'Object' })).toBe('Record<string, any>');
-		expect(mapType({
-			type: 'Object',
-			properties: [
-				{ name: 'id', type: 'ID', isPrimaryKey: true },
-				{ name: 'name', type: 'String', nullable: true },
-			],
-		})).toBe('{ id: string; name?: string; }');
+		expect(
+			mapType({
+				type: 'Object',
+				properties: [
+					{ name: 'id', type: 'ID', isPrimaryKey: true },
+					{ name: 'name', type: 'String', nullable: true },
+				],
+			}),
+		).toBe('{ id: string; name?: string; }');
 	});
 
 	it('should fallback to singularized type name for unknown types', () => {

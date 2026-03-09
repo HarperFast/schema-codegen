@@ -9,7 +9,8 @@ import { singularize } from './singularize.js';
 export function generateInterface(table) {
 	const pluralRaw = table.tableName;
 	const singularRaw = singularize(pluralRaw);
-	const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+	const dbPrefix =
+		table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
 	const plural = `${dbPrefix}${pluralRaw}`;
 	const singular = `${dbPrefix}${singularRaw}`;
 	const isDifferent = plural !== singular;

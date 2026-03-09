@@ -55,7 +55,12 @@ export function singularize(word) {
 		return word.slice(0, -3) + 'y';
 	}
 	if (word.endsWith('es')) {
-		if (word.endsWith('xes') || word.endsWith('ses') || word.endsWith('ches') || word.endsWith('shes')) {
+		if (
+			word.endsWith('xes') ||
+			word.endsWith('ses') ||
+			word.endsWith('ches') ||
+			word.endsWith('shes')
+		) {
 			return word.slice(0, -2);
 		}
 	}

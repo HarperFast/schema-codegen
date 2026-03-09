@@ -1,24 +1,24 @@
 {
 	"name": "@harperfast/schema-codegen",
 	"version": "1.0.3",
-	"type": "module",
-	"scripts": {
-		"commitlint": "commitlint --edit",
-		"format:check": "dprint check",
-		"format:fix": "dprint fmt",
-		"format:staged": "dprint check --staged --allow-no-files",
-		"lint:check": "oxlint .",
-		"lint:fix": "oxlint . --fix",
-		"test": "vitest run",
-		"test:coverage": "vitest run --coverage",
-		"test:watch": "vitest"
-	},
 	"files": [
 		"extensionModule.js",
 		"config.yaml",
 		"utils/",
 		"!utils/**/*.test.js"
 	],
+	"type": "module",
+	"scripts": {
+		"commitlint": "commitlint --edit",
+		"format:check": "oxfmt --check",
+		"format:fix": "oxfmt --write",
+		"format:staged": "oxfmt --check --list-different",
+		"lint:check": "oxlint .",
+		"lint:fix": "oxlint . --fix",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"test:watch": "vitest"
+	},
 	"devDependencies": {
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
@@ -31,8 +31,8 @@
 		"@types/react": "^19.2.10",
 		"@vitest/coverage-v8": "^4.0.18",
 		"conventional-changelog-conventionalcommits": "^9.1.0",
-		"dprint": "^0.52.0",
 		"harperdb": "^4.7.20",
+		"oxfmt": "^0.36.0",
 		"oxlint": "^1.51.0",
 		"semantic-release": "^25.0.2",
 		"vitest": "^4.0.18"

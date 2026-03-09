@@ -64,7 +64,7 @@ export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	content += `}\n`;
 	const outPath = globalTypesPath;
 	const dir = path.dirname(outPath);
-	if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); }
+	fs.mkdirSync(dir, { recursive: true });
 	const existingContent = fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8');
 	if (existingContent !== content) {
 		fs.writeFileSync(outPath, content, 'utf8');

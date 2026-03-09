@@ -1,7 +1,7 @@
 /** @typedef {import('harperdb').Scope} Scope */
+import { setTimeout as delay } from 'node:timers/promises';
 import { setLogger } from './utils/logger.js';
 import { regenerateAll } from './utils/regenerateAll.js';
-import { setTimeout as delay } from 'node:timers/promises';
 
 export const suppressHandleApplicationWarning = true;
 

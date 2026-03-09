@@ -35,4 +35,27 @@ describe('generateJSDoc', () => {
 		expect(code).toContain('@typedef {auth_User[]} auth_Users');
 		expect(code).toContain("@typedef {Omit<auth_User, 'id'>} auth_NewUser");
 	});
+
+	it('should handle missing attributes', () => {
+		const table = {
+			tableName: 'EmptyTable',
+			databaseName: 'data',
+		};
+		const code = generateJSDoc(table);
+		expect(code).toContain('@typedef {Object} EmptyTable');
+		expect(code).not.toContain('@property');
+	});
+
+	it('should handle multiple primary keys', () => {
+		const table = {
+			tableName: 'UserRoles',
+			databaseName: 'data',
+			attributes: [
+				{ name: 'userId', type: 'ID', isPrimaryKey: true },
+				{ name: 'roleId', type: 'ID', isPrimaryKey: true },
+			],
+		};
+		const code = generateJSDoc(table);
+		expect(code).toContain("@typedef {Omit<UserRole, 'userId' | 'roleId'>} NewUserRole");
+	});
 });

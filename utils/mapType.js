@@ -6,7 +6,7 @@ import { singularize } from './singularize.js';
  * @returns {string}
  */
 function mapObjectType(properties) {
-	if (!properties || properties.length === 0) {
+	if (!properties?.length) {
 		return 'Record<string, any>';
 	}
 	const fields = properties
@@ -23,7 +23,8 @@ function mapObjectType(properties) {
  * @returns {string}
  */
 export function mapType(attribute) {
-	const name = attribute?.type || 'Any';
+	if (!attribute) return 'any';
+	const name = attribute.type || 'Any';
 	switch (name) {
 		case 'String':
 		case 'ID':

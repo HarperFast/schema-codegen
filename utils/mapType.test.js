@@ -30,6 +30,12 @@ describe('mapType', () => {
 		expect(
 			mapType({
 				type: 'Object',
+				properties: [],
+			}),
+		).toBe('Record<string, any>');
+		expect(
+			mapType({
+				type: 'Object',
 				properties: [
 					{ name: 'id', type: 'ID', isPrimaryKey: true },
 					{ name: 'name', type: 'String', nullable: true },
@@ -40,5 +46,9 @@ describe('mapType', () => {
 
 	it('should fallback to singularized type name for unknown types', () => {
 		expect(mapType({ type: 'Users' })).toBe('User');
+	});
+
+	it('should handle undefined attribute', () => {
+		expect(mapType(undefined)).toBe('any');
 	});
 });

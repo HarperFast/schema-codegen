@@ -1,7 +1,7 @@
 /** @typedef {import('harperdb').Scope} Scope */
 import { setLogger } from './utils/logger.js';
 import { regenerateAll } from './utils/regenerateAll.js';
-import { sleep } from './utils/sleep.js';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export const suppressHandleApplicationWarning = true;
 
@@ -27,7 +27,7 @@ export async function handleApplication(scope) {
 	}
 
 	// Do not await this.
-	sleep(500)
+	delay(500)
 		.then(() => {
 			// Initial generation
 			regenerateAll(globalTypes, schemaTypes, jsdoc);

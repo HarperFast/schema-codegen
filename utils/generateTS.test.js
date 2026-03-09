@@ -7,16 +7,12 @@ describe('generateTSFromTables', () => {
 			{
 				tableName: 'Users',
 				databaseName: 'data',
-				attributes: [
-					{ name: 'id', type: 'ID', isPrimaryKey: true },
-				],
+				attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
 			},
 			{
 				tableName: 'Posts',
 				databaseName: 'blog',
-				attributes: [
-					{ name: 'id', type: 'ID', isPrimaryKey: true },
-				],
+				attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
 			},
 		];
 		const { tsCode, tables: tablesMeta } = generateTSFromTables(tables, 'Test Label');

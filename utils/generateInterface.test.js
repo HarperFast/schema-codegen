@@ -23,9 +23,7 @@ describe('generateInterface', () => {
 		const table = {
 			tableName: 'Posts',
 			databaseName: 'blog',
-			attributes: [
-				{ name: 'id', type: 'ID', isPrimaryKey: true },
-			],
+			attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
 		};
 		const result = generateInterface(table);
 		expect(result).toContain('export interface blog_Post {');
@@ -57,26 +55,24 @@ describe('generateInterface', () => {
 		expect(result).toContain("export type NewTaskRecord = Omit<Task, 'id'>;");
 	});
 
-    it('should handle multiple primary keys', () => {
-        const table = {
-            tableName: 'UserRoles',
-            attributes: [
-                { name: 'userId', type: 'ID', isPrimaryKey: true },
-                { name: 'roleId', type: 'ID', isPrimaryKey: true },
-            ],
-        };
-        const result = generateInterface(table);
-        expect(result).toContain("export type NewUserRole = Omit<UserRole, 'userId' | 'roleId'>;");
-    });
+	it('should handle multiple primary keys', () => {
+		const table = {
+			tableName: 'UserRoles',
+			attributes: [
+				{ name: 'userId', type: 'ID', isPrimaryKey: true },
+				{ name: 'roleId', type: 'ID', isPrimaryKey: true },
+			],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain("export type NewUserRole = Omit<UserRole, 'userId' | 'roleId'>;");
+	});
 
-    it('should not generate New type when no primary key is present', () => {
-        const table = {
-            tableName: 'Logs',
-            attributes: [
-                { name: 'message', type: 'String' },
-            ],
-        };
-        const result = generateInterface(table);
-        expect(result).not.toContain("export type NewLog =");
-    });
+	it('should not generate New type when no primary key is present', () => {
+		const table = {
+			tableName: 'Logs',
+			attributes: [{ name: 'message', type: 'String' }],
+		};
+		const result = generateInterface(table);
+		expect(result).not.toContain('export type NewLog =');
+	});
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@harperfast/schema-codegen",
-	"version": "1.0.3",
+	"version": "1.0.8",
 	"description": "Generate useful types from your Harper database schemas",
 	"keywords": [],
 	"homepage": "https://github.com/harperfast",

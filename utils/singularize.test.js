@@ -29,6 +29,7 @@ describe('singularize', () => {
 		expect(singularize('boxes')).toBe('box');
 		expect(singularize('buses')).toBe('bus');
 		expect(singularize('churches')).toBe('church');
+		expect(singularize('octopuses')).toBe('octopus');
 		expect(singularize('wishes')).toBe('wish');
 	});
 

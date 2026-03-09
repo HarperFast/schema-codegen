@@ -1,4 +1,4 @@
-import path from 'path';
+import path from 'node:path';
 import { collectTables } from './collectTables.js';
 import { generateJSDocFromTables } from './generateJSDocFromTables.js';
 import { generateTablesDTS } from './generateTablesDTS.js';

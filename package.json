@@ -12,7 +12,10 @@
 		"name": "Harper",
 		"email": "support@harperdb.io"
 	},
-	"repository": "github:HarperFast/schema-codegen",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/HarperFast/schema-codegen.git"
+	},
 	"files": [
 		"extensionModule.js",
 		"config.yaml",

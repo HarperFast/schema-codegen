@@ -54,7 +54,9 @@ export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	for (const [dbName, dbTables] of dbMap.entries()) {
 		content += `\t\t${dbName}: {\n`;
 		for (const table of dbTables) {
-			const pluralRaw = table.plural.startsWith(`${dbName}_`) ? table.plural.slice(dbName.length + 1) : table.plural;
+			const pluralRaw = table.plural.startsWith(`${dbName}_`)
+				? table.plural.slice(dbName.length + 1)
+				: table.plural;
 			content += `\t\t\t${pluralRaw}: { new(...args: any[]): Table<${table.singular}> };\n`;
 		}
 		content += `\t\t};\n`;

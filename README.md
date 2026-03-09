@@ -75,11 +75,11 @@ import type { Track } from './types.ts';
 
 declare module 'harperdb' {
 	export const tables: {
-		Tracks: { new(...args: any[]): Table<Track> };
+		Tracks: { new (...args: any[]): Table<Track> };
 	};
 	export const databases: {
 		data: {
-			Tracks: { new(...args: any[]): Table<Track> };
+			Tracks: { new (...args: any[]): Table<Track> };
 		};
 	};
 }

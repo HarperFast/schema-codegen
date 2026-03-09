@@ -7,10 +7,7 @@ import { singularize } from './singularize.js';
  * @param {(Table & { databaseName: string })[]} tablesInput
  * @param {string} label
  */
-export function generateJSDocFromTables(
-	tablesInput,
-	label = 'HarperDB schemas',
-) {
+export function generateJSDocFromTables(tablesInput, label = 'HarperDB schemas') {
 	let jsCode = `/**
  Generated from ${label}
  Manual changes will be lost!
@@ -21,7 +18,8 @@ export function generateJSDocFromTables(
 
 	for (const table of tablesInput) {
 		jsCode += generateJSDoc(table);
-		const dbPrefix = table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+		const dbPrefix =
+			table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
 		const plural = `${dbPrefix}${table.tableName}`;
 		const singular = `${dbPrefix}${singularize(table.tableName)}`;
 		tables.push({ plural, singular, databaseName: table.databaseName });

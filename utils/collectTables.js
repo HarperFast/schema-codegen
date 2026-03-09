@@ -10,7 +10,9 @@ export function collectTables() {
 		const tables = databases[databaseName];
 		for (const tableName of Object.keys(tables || {})) {
 			const TableClass = tables[tableName];
-			if (!TableClass?.attributes) { continue; }
+			if (!TableClass?.attributes) {
+				continue;
+			}
 			tablesList.push(TableClass);
 		}
 	}

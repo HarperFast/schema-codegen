@@ -6,7 +6,9 @@ import { singularize } from './singularize.js';
  * @returns {string}
  */
 function mapObjectType(properties) {
-	if (!properties || properties.length === 0) { return 'Record<string, any>'; }
+	if (!properties || properties.length === 0) {
+		return 'Record<string, any>';
+	}
 	const fields = properties
 		.map((prop) => {
 			const optional = prop.isPrimaryKey ? false : !!prop.nullable;

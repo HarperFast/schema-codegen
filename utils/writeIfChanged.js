@@ -8,7 +8,7 @@ import { getLogger } from './logger.js';
  */
 export function writeIfChanged(filePath, content) {
 	const dir = path.dirname(filePath);
-	if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); }
+	fs.mkdirSync(dir, { recursive: true });
 	const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
 	if (existing !== content) {
 		fs.writeFileSync(filePath, content, 'utf8');

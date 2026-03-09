@@ -1,18 +1,18 @@
 {
 	"name": "@harperfast/schema-codegen",
-	"description": "Generate useful types from your Harper database schemas",
 	"version": "1.0.3",
-	"repository": "github:HarperFast/schema-codegen",
+	"description": "Generate useful types from your Harper database schemas",
+	"keywords": [],
+	"homepage": "https://github.com/harperfast",
 	"bugs": {
 		"url": "https://github.com/harperfast/schema-codegen/issues"
 	},
-	"homepage": "https://github.com/harperfast",
-	"keywords": [],
+	"license": "Apache-2.0",
 	"author": {
 		"name": "Harper",
 		"email": "support@harperdb.io"
 	},
-	"license": "Apache-2.0",
+	"repository": "github:HarperFast/schema-codegen",
 	"files": [
 		"extensionModule.js",
 		"config.yaml",

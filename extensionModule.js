@@ -27,7 +27,7 @@ export async function handleApplication(scope) {
 	}
 
 	// Do not await this.
-	delay(500).then(() => {
+	delay(5000).then(() => {
 		// Initial generation
 		regenerateAll(globalTypes, schemaTypes, jsdoc);
 

@@ -75,4 +75,33 @@ describe('generateInterface', () => {
 		const result = generateInterface(table);
 		expect(result).not.toContain('export type NewLog =');
 	});
+
+	it('should produce valid identifiers for table names containing dashes', () => {
+		const table = {
+			tableName: 'blog-posts',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'title', type: 'String' },
+			],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain('export interface blogPost {');
+		expect(result).toContain('export type blogPosts = blogPost[];');
+		expect(result).toContain('export type { blogPost as blogPostRecord };');
+		expect(result).toContain('export type blogPostRecords = blogPost[];');
+		expect(result).toContain("export type NewblogPost = Omit<blogPost, 'id'>;");
+		expect(result).not.toContain('blog-post');
+	});
+
+	it('should handle databaseName prefix with dashed table name', () => {
+		const table = {
+			tableName: 'audit-logs',
+			databaseName: 'mydb',
+			attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain('export interface mydb_auditLog {');
+		expect(result).toContain('export type mydb_auditLogs = mydb_auditLog[];');
+		expect(result).not.toContain('audit-log');
+	});
 });

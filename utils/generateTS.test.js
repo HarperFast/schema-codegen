@@ -37,4 +37,21 @@ describe('generateTSFromTables', () => {
 		const { tsCode } = generateTSFromTables([], undefined);
 		expect(tsCode).toContain('Generated from HarperDB schemas');
 	});
+
+	it('should produce valid identifiers when table name contains dashes', () => {
+		const tables = [
+			{
+				tableName: 'blog-posts',
+				databaseName: 'data',
+				attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+			},
+		];
+		const { tsCode, tables: tablesMeta } = generateTSFromTables(tables);
+		expect(tsCode).toContain('export interface blogPost {');
+		expect(tablesMeta[0]).toEqual({
+			plural: 'blog-posts',
+			singular: 'blogPost',
+			databaseName: 'data',
+		});
+	});
 });

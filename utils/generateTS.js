@@ -2,6 +2,7 @@
 /** @import { TableMeta } from './tableMeta.js' */
 import { generateInterface } from './generateInterface.js';
 import { singularize } from './singularize.js';
+import { toIdentifier } from './toIdentifier.js';
 
 /**
  * @param {(Table & { databaseName: string })[]} tablesInput
@@ -22,7 +23,7 @@ export function generateTSFromTables(tablesInput, label = 'HarperDB schemas') {
 		const dbPrefix =
 			table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
 		const plural = `${dbPrefix}${table.tableName}`;
-		const singular = `${dbPrefix}${singularize(table.tableName)}`;
+		const singular = `${dbPrefix}${toIdentifier(singularize(table.tableName))}`;
 		tables.push({ plural, singular, databaseName: table.databaseName });
 	}
 

@@ -8,6 +8,15 @@ import { getLogger } from './logger.js';
  * @param {string} schemaTypesPath
  * @param {TableMeta[]} tables
  */
+/**
+ * Wraps a property name in quotes if it contains characters that are not
+ * valid in an unquoted TypeScript identifier (anything other than word chars).
+ * @param {string} name
+ */
+function safeKey(name) {
+	return /[^\w]/.test(name) ? `'${name}'` : name;
+}
+
 export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	let content = `/**
  Generated from your schema files
@@ -45,19 +54,19 @@ export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	const dataTables = dbMap.get('data') || [];
 	content += `\texport const tables: {\n`;
 	for (const table of dataTables) {
-		content += `\t\t${table.plural}: { new(...args: any[]): Table<${table.singular}> };\n`;
+		content += `\t\t${safeKey(table.plural)}: { new(...args: any[]): Table<${table.singular}> };\n`;
 	}
 	content += `\t};\n\n`;
 
 	// Export namespaced databases
 	content += `\texport const databases: {\n`;
 	for (const [dbName, dbTables] of dbMap.entries()) {
-		content += `\t\t${dbName}: {\n`;
+		content += `\t\t${safeKey(dbName)}: {\n`;
 		for (const table of dbTables) {
 			const pluralRaw = table.plural.startsWith(`${dbName}_`)
 				? table.plural.slice(dbName.length + 1)
 				: table.plural;
-			content += `\t\t\t${pluralRaw}: { new(...args: any[]): Table<${table.singular}> };\n`;
+			content += `\t\t\t${safeKey(pluralRaw)}: { new(...args: any[]): Table<${table.singular}> };\n`;
 		}
 		content += `\t\t};\n`;
 	}

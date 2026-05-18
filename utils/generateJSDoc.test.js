@@ -58,4 +58,20 @@ describe('generateJSDoc', () => {
 		const code = generateJSDoc(table);
 		expect(code).toContain("@typedef {Omit<UserRole, 'userId' | 'roleId'>} NewUserRole");
 	});
+
+	it('should produce valid identifiers for table names containing dashes', () => {
+		const table = {
+			tableName: 'blog-posts',
+			databaseName: 'data',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'title', type: 'String' },
+			],
+		};
+		const code = generateJSDoc(table);
+		expect(code).toContain('@typedef {Object} blogPost');
+		expect(code).toContain('@typedef {blogPost[]} blogPosts');
+		expect(code).toContain("@typedef {Omit<blogPost, 'id'>} NewblogPost");
+		expect(code).not.toContain('blog-post');
+	});
 });

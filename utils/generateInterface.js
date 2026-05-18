@@ -2,13 +2,14 @@
 import { isNullable } from './isNullable.js';
 import { mapType } from './mapType.js';
 import { singularize } from './singularize.js';
+import { toIdentifier } from './toIdentifier.js';
 
 /**
  * @param {Table & { databaseName?: string }} table
  */
 export function generateInterface(table) {
-	const pluralRaw = table.tableName;
-	const singularRaw = singularize(pluralRaw);
+	const pluralRaw = toIdentifier(table.tableName);
+	const singularRaw = toIdentifier(singularize(table.tableName));
 	const dbPrefix =
 		table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
 	const plural = `${dbPrefix}${pluralRaw}`;

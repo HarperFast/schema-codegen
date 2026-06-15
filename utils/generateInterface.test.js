@@ -93,6 +93,55 @@ describe('generateInterface', () => {
 		expect(result).not.toContain('blog-post');
 	});
 
+	it('should produce valid identifiers for table names starting with a digit', () => {
+		const table = {
+			tableName: '123_New4',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: '__createdtime__', type: 'Any' },
+				{ name: '__updatedtime__', type: 'Any' },
+			],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain('export interface _123_New4 {');
+		expect(result).toContain("export type New_123_New4 = Omit<_123_New4, 'id'>;");
+		expect(result).toContain('export type { _123_New4 as _123_New4Record };');
+		expect(result).toContain('export type _123_New4Records = _123_New4[];');
+		expect(result).toContain("export type New_123_New4Record = Omit<_123_New4, 'id'>;");
+		// the original, invalid `interface 123_New4` must not appear anywhere
+		expect(result).not.toMatch(/\b123_New4\b/);
+	});
+
+	it('should quote attribute names that are not valid identifiers', () => {
+		const table = {
+			tableName: 'Things',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'first-name', type: 'String', nullable: false },
+				{ name: '123field', type: 'String', nullable: true },
+				{ name: 'with space', type: 'String', nullable: false },
+				{ name: 'normalField', type: 'String', nullable: false },
+			],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain("'first-name': string;");
+		expect(result).toContain("'123field'?: string;");
+		expect(result).toContain("'with space': string;");
+		// valid identifiers stay unquoted
+		expect(result).toContain('id: string;');
+		expect(result).toContain('normalField: string;');
+	});
+
+	it('should quote a primary key attribute name consistently in the interface and Omit', () => {
+		const table = {
+			tableName: 'Things',
+			attributes: [{ name: 'weird-key', type: 'ID', isPrimaryKey: true }],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain("'weird-key': string;");
+		expect(result).toContain("export type NewThing = Omit<Thing, 'weird-key'>;");
+	});
+
 	it('should handle databaseName prefix with dashed table name', () => {
 		const table = {
 			tableName: 'audit-logs',

@@ -59,6 +59,18 @@ describe('generateJSDoc', () => {
 		expect(code).toContain("@typedef {Omit<UserRole, 'userId' | 'roleId'>} NewUserRole");
 	});
 
+	it('should produce valid identifiers for table names starting with a digit', () => {
+		const table = {
+			tableName: '123_New4',
+			databaseName: 'data',
+			attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+		};
+		const code = generateJSDoc(table);
+		expect(code).toContain('@typedef {Object} _123_New4');
+		expect(code).toContain("@typedef {Omit<_123_New4, 'id'>} New_123_New4");
+		expect(code).not.toMatch(/\b123_New4\b/);
+	});
+
 	it('should produce valid identifiers for table names containing dashes', () => {
 		const table = {
 			tableName: 'blog-posts',

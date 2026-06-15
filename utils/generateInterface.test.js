@@ -142,6 +142,16 @@ describe('generateInterface', () => {
 		expect(result).toContain("export type NewThing = Omit<Thing, 'weird-key'>;");
 	});
 
+	it('should escape a quote in a primary key name in both the property and the Omit', () => {
+		const table = {
+			tableName: 'Things',
+			attributes: [{ name: "o'connor", type: 'ID', isPrimaryKey: true }],
+		};
+		const result = generateInterface(table);
+		expect(result).toContain("'o\\'connor': string;");
+		expect(result).toContain("export type NewThing = Omit<Thing, 'o\\'connor'>;");
+	});
+
 	it('should handle databaseName prefix with dashed table name', () => {
 		const table = {
 			tableName: 'audit-logs',

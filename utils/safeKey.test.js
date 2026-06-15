@@ -19,4 +19,9 @@ describe('safeKey', () => {
 		expect(safeKey('123field')).toBe("'123field'");
 		expect(safeKey('123_New4')).toBe("'123_New4'");
 	});
+
+	it('should escape single quotes and backslashes within a quoted name', () => {
+		expect(safeKey("o'connor")).toBe("'o\\'connor'");
+		expect(safeKey('a\\b')).toBe("'a\\\\b'");
+	});
 });

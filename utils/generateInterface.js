@@ -1,6 +1,7 @@
 /** @typedef {import('harperdb').Table} Table */
 import { isNullable } from './isNullable.js';
 import { mapType } from './mapType.js';
+import { safeKey } from './safeKey.js';
 import { singularize } from './singularize.js';
 import { toIdentifier } from './toIdentifier.js';
 
@@ -23,7 +24,7 @@ export function generateInterface(table) {
 		const type = mapType(attribute);
 		const primaryKey = !!attribute.isPrimaryKey;
 		const nullable = !primaryKey && isNullable(attribute);
-		code += `\t${attribute.name}${nullable ? '?' : ''}: ${type};\n`;
+		code += `\t${safeKey(attribute.name)}${nullable ? '?' : ''}: ${type};\n`;
 		if (primaryKey) {
 			primaryKeys.push(attribute.name);
 		}

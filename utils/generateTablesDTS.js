@@ -2,21 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getLogger } from './logger.js';
+import { safeKey } from './safeKey.js';
 
 /**
  * @param {string} globalTypesPath
  * @param {string} schemaTypesPath
  * @param {TableMeta[]} tables
  */
-/**
- * Wraps a property name in quotes if it contains characters that are not
- * valid in an unquoted TypeScript identifier (anything other than word chars).
- * @param {string} name
- */
-function safeKey(name) {
-	return /[^\w]/.test(name) ? `'${name}'` : name;
-}
-
 export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables) {
 	let content = `/**
  Generated from your schema files

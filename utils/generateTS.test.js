@@ -38,6 +38,24 @@ describe('generateTSFromTables', () => {
 		expect(tsCode).toContain('Generated from HarperDB schemas');
 	});
 
+	it('should produce a valid type identifier when table name starts with a digit', () => {
+		const tables = [
+			{
+				tableName: '123_New4',
+				databaseName: 'data',
+				attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+			},
+		];
+		const { tsCode, tables: tablesMeta } = generateTSFromTables(tables);
+		expect(tsCode).toContain('export interface _123_New4 {');
+		// the runtime key is preserved verbatim, but the type name is a valid identifier
+		expect(tablesMeta[0]).toEqual({
+			plural: '123_New4',
+			singular: '_123_New4',
+			databaseName: 'data',
+		});
+	});
+
 	it('should produce valid identifiers when table name contains dashes', () => {
 		const tables = [
 			{

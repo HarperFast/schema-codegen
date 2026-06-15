@@ -1,4 +1,5 @@
 /** @typedef {import('harperdb').Table} Table */
+import { escapeSingleQuoted } from './escapeSingleQuoted.js';
 import { isNullable } from './isNullable.js';
 import { mapType } from './mapType.js';
 import { safeKey } from './safeKey.js';
@@ -32,7 +33,7 @@ export function generateInterface(table) {
 	code += `}\n\n`;
 
 	const hasPks = primaryKeys.length > 0;
-	const pks = hasPks ? primaryKeys.map((pk) => `'${pk}'`).join(' | ') : null;
+	const pks = hasPks ? primaryKeys.map((pk) => `'${escapeSingleQuoted(pk)}'`).join(' | ') : null;
 
 	if (hasPks) {
 		code += `export type ${dbPrefix}New${singularRaw} = Omit<${singular}, ${pks}>;\n`;

@@ -29,6 +29,32 @@ Alternatively, if you are using pure JavaScript, you can generate JSDoc instead:
 
 When you `harper dev`, it will generate types based on the schema that's actually in your Harper database. If you change the schema, we will automatically regenerate the types for you.
 
+## Options
+
+| Option             | Default  | Description                                                                                                                                                |
+| ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `globalTypes`      | —        | Path to write the ambient module augmentation (`.d.ts`).                                                                                                   |
+| `schemaTypes`      | —        | Path to write the exported interfaces (`.ts`).                                                                                                             |
+| `jsdoc`            | —        | Path to write JSDoc types instead, for pure JavaScript projects.                                                                                           |
+| `module`           | `harper` | The runtime package to augment. Harper 5.x apps import from `harper`; set this to `harperdb` for Harper 4.x apps.                                          |
+| `includeDatabases` | (all)    | List of database names to generate types for. When set, only matching databases are emitted. Supports `*` as a wildcard, e.g. `metrics-*`.                 |
+| `excludeDatabases` | (none)   | List of database names to skip. Useful on a shared instance to keep other applications' databases out of your generated types. Supports `*` as a wildcard. |
+
+`includeDatabases`/`excludeDatabases` scope generation to your application's own
+databases. On a shared local instance, codegen otherwise sees every database on
+the instance — including ones belonging to other projects — so scoping keeps
+your generated types focused:
+
+```yaml
+'@harperfast/schema-codegen':
+  package: '@harperfast/schema-codegen'
+  globalTypes: 'schemas/globalTypes.d.ts'
+  schemaTypes: 'schemas/types.ts'
+  includeDatabases:
+    - data
+    - 'metrics-*'
+```
+
 ## Example
 
 For example, here's a tracks.graphql schema:
@@ -70,10 +96,10 @@ An ambient declaration will also be generated in globalTypes.d.ts to enhance the
  Manual changes will be lost!
  > harper dev .
  */
-import type { Table } from 'harperdb';
+import type { Table } from 'harper';
 import type { Track } from './types.ts';
 
-declare module 'harperdb' {
+declare module 'harper' {
 	export const tables: {
 		Tracks: { new (...args: any[]): Table<Track> };
 	};

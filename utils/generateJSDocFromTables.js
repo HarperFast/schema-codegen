@@ -1,7 +1,9 @@
 /** @typedef {import('harperdb').Table} Table */
 /** @import { TableMeta } from './tableMeta.js' */
+import { dbTypePrefix } from './dbTypePrefix.js';
 import { generateJSDoc } from './generateJSDoc.js';
 import { singularize } from './singularize.js';
+import { toIdentifier } from './toIdentifier.js';
 
 /**
  * @param {(Table & { databaseName: string })[]} tablesInput
@@ -18,11 +20,8 @@ export function generateJSDocFromTables(tablesInput, label = 'HarperDB schemas')
 
 	for (const table of tablesInput) {
 		jsCode += generateJSDoc(table);
-		const dbPrefix =
-			table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
-		const plural = `${dbPrefix}${table.tableName}`;
-		const singular = `${dbPrefix}${singularize(table.tableName)}`;
-		tables.push({ plural, singular, databaseName: table.databaseName });
+		const singular = `${dbTypePrefix(table.databaseName)}${toIdentifier(singularize(table.tableName))}`;
+		tables.push({ tableName: table.tableName, singular, databaseName: table.databaseName });
 	}
 
 	return { jsCode, tables };

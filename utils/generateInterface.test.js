@@ -163,4 +163,23 @@ describe('generateInterface', () => {
 		expect(result).toContain('export type mydb_auditLogs = mydb_auditLog[];');
 		expect(result).not.toContain('audit-log');
 	});
+
+	it('should produce valid identifiers when the database name contains dashes', () => {
+		const table = {
+			tableName: 'Repository',
+			databaseName: 'metrics-github',
+			attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+		};
+		const result = generateInterface(table);
+		// the hyphenated database name must be sanitized in every type position;
+		// "metrics-github_Repository" would parse as a subtraction
+		expect(result).toContain('export interface metricsGithub_Repository {');
+		expect(result).toContain(
+			"export type metricsGithub_NewRepository = Omit<metricsGithub_Repository, 'id'>;",
+		);
+		expect(result).toContain(
+			'export type metricsGithub_RepositoryRecords = metricsGithub_Repository[];',
+		);
+		expect(result).not.toContain('metrics-github_Repository');
+	});
 });

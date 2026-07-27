@@ -22,12 +22,12 @@ describe('generateTSFromTables', () => {
 
 		expect(tablesMeta).toHaveLength(2);
 		expect(tablesMeta[0]).toEqual({
-			plural: 'Users',
+			tableName: 'Users',
 			singular: 'User',
 			databaseName: 'data',
 		});
 		expect(tablesMeta[1]).toEqual({
-			plural: 'blog_Posts',
+			tableName: 'Posts',
 			singular: 'blog_Post',
 			databaseName: 'blog',
 		});
@@ -50,7 +50,7 @@ describe('generateTSFromTables', () => {
 		expect(tsCode).toContain('export interface _123_New4 {');
 		// the runtime key is preserved verbatim, but the type name is a valid identifier
 		expect(tablesMeta[0]).toEqual({
-			plural: '123_New4',
+			tableName: '123_New4',
 			singular: '_123_New4',
 			databaseName: 'data',
 		});
@@ -67,9 +67,30 @@ describe('generateTSFromTables', () => {
 		const { tsCode, tables: tablesMeta } = generateTSFromTables(tables);
 		expect(tsCode).toContain('export interface blogPost {');
 		expect(tablesMeta[0]).toEqual({
-			plural: 'blog-posts',
+			tableName: 'blog-posts',
 			singular: 'blogPost',
 			databaseName: 'data',
+		});
+	});
+
+	it('should produce valid identifiers when the database name contains dashes', () => {
+		const tables = [
+			{
+				tableName: 'Repository',
+				databaseName: 'metrics-github',
+				attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+			},
+		];
+		const { tsCode, tables: tablesMeta } = generateTSFromTables(tables);
+		// the database prefix must be sanitized into a valid identifier; an
+		// unsanitized "metrics-github_Repository" parses as a subtraction
+		expect(tsCode).toContain('export interface metricsGithub_Repository {');
+		expect(tsCode).not.toContain('metrics-github_Repository');
+		// the runtime key (databaseName) is preserved verbatim for the .d.ts to quote
+		expect(tablesMeta[0]).toEqual({
+			tableName: 'Repository',
+			singular: 'metricsGithub_Repository',
+			databaseName: 'metrics-github',
 		});
 	});
 });

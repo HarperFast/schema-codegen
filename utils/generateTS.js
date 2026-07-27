@@ -1,5 +1,6 @@
 /** @typedef {import('harperdb').Table} Table */
 /** @import { TableMeta } from './tableMeta.js' */
+import { dbTypePrefix } from './dbTypePrefix.js';
 import { generateInterface } from './generateInterface.js';
 import { singularize } from './singularize.js';
 import { toIdentifier } from './toIdentifier.js';
@@ -20,11 +21,8 @@ export function generateTSFromTables(tablesInput, label = 'HarperDB schemas') {
 
 	for (const table of tablesInput) {
 		tsCode += generateInterface(table);
-		const dbPrefix =
-			table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
-		const plural = `${dbPrefix}${table.tableName}`;
-		const singular = `${dbPrefix}${toIdentifier(singularize(table.tableName))}`;
-		tables.push({ plural, singular, databaseName: table.databaseName });
+		const singular = `${dbTypePrefix(table.databaseName)}${toIdentifier(singularize(table.tableName))}`;
+		tables.push({ tableName: table.tableName, singular, databaseName: table.databaseName });
 	}
 
 	return { tsCode, tables };

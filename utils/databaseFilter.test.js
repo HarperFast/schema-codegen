@@ -24,6 +24,12 @@ describe('matchesDatabase', () => {
 		expect(matchesDatabase('myXdb', ['my.db'])).toBe(false);
 		expect(matchesDatabase('my.db', ['my.db'])).toBe(true);
 	});
+
+	it('coerces numeric patterns from unquoted YAML without crashing', () => {
+		// an unquoted numeric database name in YAML parses as a number
+		expect(matchesDatabase('101', [101])).toBe(true);
+		expect(matchesDatabase('202', [101])).toBe(false);
+	});
 });
 
 describe('shouldIncludeDatabase', () => {

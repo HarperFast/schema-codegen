@@ -21,6 +21,14 @@ export async function handleApplication(scope) {
 	const globalTypes = /** @type {string} */ (scope.options.get(['globalTypes']));
 	const schemaTypes = /** @type {string} */ (scope.options.get(['schemaTypes']));
 	const jsdoc = /** @type {string | undefined} */ (scope.options.get(['jsdoc']));
+	const moduleName = /** @type {string | undefined} */ (scope.options.get(['module']));
+	const includeDatabases = /** @type {string[] | undefined} */ (
+		scope.options.get(['includeDatabases'])
+	);
+	const excludeDatabases = /** @type {string[] | undefined} */ (
+		scope.options.get(['excludeDatabases'])
+	);
+	const options = { module: moduleName, includeDatabases, excludeDatabases };
 
 	if (shouldWatch) {
 		scope.on('close', scopeClosed);
@@ -29,7 +37,7 @@ export async function handleApplication(scope) {
 	// Do not await this.
 	delay(5000).then(() => {
 		// Initial generation
-		regenerateAll(globalTypes, schemaTypes, jsdoc);
+		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
 
 		if (shouldWatch) {
 			// Watch for schema/database changes via events
@@ -40,15 +48,15 @@ export async function handleApplication(scope) {
 	});
 
 	function updateTable() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc);
+		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
 	}
 
 	function dropTable() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc);
+		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
 	}
 
 	function dropDatabase() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc);
+		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
 	}
 
 	function scopeClosed() {

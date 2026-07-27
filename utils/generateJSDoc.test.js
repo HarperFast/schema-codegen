@@ -86,4 +86,18 @@ describe('generateJSDoc', () => {
 		expect(code).toContain("@typedef {Omit<blogPost, 'id'>} NewblogPost");
 		expect(code).not.toContain('blog-post');
 	});
+
+	it('should produce valid identifiers when the database name contains dashes', () => {
+		const table = {
+			tableName: 'Repository',
+			databaseName: 'metrics-github',
+			attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+		};
+		const code = generateJSDoc(table);
+		expect(code).toContain('@typedef {Object} metricsGithub_Repository');
+		expect(code).toContain(
+			"@typedef {Omit<metricsGithub_Repository, 'id'>} metricsGithub_NewRepository",
+		);
+		expect(code).not.toContain('metrics-github_Repository');
+	});
 });

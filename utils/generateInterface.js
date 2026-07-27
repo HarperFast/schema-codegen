@@ -1,4 +1,5 @@
 /** @typedef {import('harperdb').Table} Table */
+import { dbTypePrefix } from './dbTypePrefix.js';
 import { escapeSingleQuoted } from './escapeSingleQuoted.js';
 import { isNullable } from './isNullable.js';
 import { mapType } from './mapType.js';
@@ -12,8 +13,7 @@ import { toIdentifier } from './toIdentifier.js';
 export function generateInterface(table) {
 	const pluralRaw = toIdentifier(table.tableName);
 	const singularRaw = toIdentifier(singularize(table.tableName));
-	const dbPrefix =
-		table.databaseName && table.databaseName !== 'data' ? `${table.databaseName}_` : '';
+	const dbPrefix = dbTypePrefix(table.databaseName);
 	const plural = `${dbPrefix}${pluralRaw}`;
 	const singular = `${dbPrefix}${singularRaw}`;
 	const isDifferent = plural !== singular;

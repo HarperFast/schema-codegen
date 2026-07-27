@@ -4,13 +4,17 @@
  * `metrics-*` matches both `metrics-github` and `metrics-jira`. Matching is
  * case-sensitive and anchored (the whole name must match).
  * @param {string} name
- * @param {string[]} patterns
+ * @param {(string | number)[]} patterns Patterns come from YAML config, so a
+ *   purely numeric, unquoted name (e.g. `101`) arrives as a number; each pattern
+ *   is coerced to a string before matching.
  * @returns {boolean}
  */
 export function matchesDatabase(name, patterns) {
 	return patterns.some((pattern) => {
 		// escape regex metacharacters, then turn the wildcard back into `.*`
-		const source = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+		const source = String(pattern)
+			.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+			.replace(/\\\*/g, '.*');
 		return new RegExp(`^${source}$`).test(name);
 	});
 }

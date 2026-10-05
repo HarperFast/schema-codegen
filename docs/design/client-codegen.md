@@ -31,12 +31,12 @@ emitter options can change public symbols without changing the hash.
 
 ## Approaches considered
 
-| Axis | Candidate | Fact that decides |
-|---|---|---|
-| **Different layer** | (a) Harper core: a `harper generate-client` subcommand and a core IR endpoint beside `defineTable`. (b) The sync gateway (pro, #10), which will own `sync.yaml`. (c) SwiftPM/Gradle build plugins that shell out to a Node generator. | (a) Core already exposes everything needed — live `Table.attributes` plus the GraphQL type registry a component reaches as `scope.resources.allTypes` (traced below) — so no core change is required, and the design doc's M8 assigns the work to this package ("extends it rather than starting over"); a core subcommand would also tie emitter iterations to core releases. (b) The gateway does not exist yet, but codegen is a phase-0 mechanism (design doc M8: thin and cached strategies need typed models before any sync machinery). Both are served by building the IR here and **exporting** it (`buildSchemaIR`) so the gateway and Studio import one implementation. (c) Needs the same IR and emitters plus two adapters and Node in mobile builds; it removes no deliverable, and the CLI already allows build-time invocation. |
-| **Deeper cause** | Make core's schema carry a canonical client contract — e.g. build the IR from `Table.properties` (the JSON-Schema fragments from `resources/jsonSchemaTypes.ts`). | `attributeToFragment` emits `nullable` only when `true` (GraphQL never sets `true`, so undefined-means-nullable and `[T!]` element requiredness are unrecoverable) and omits computed expressions, relationship targets and `sealed`; nested types appear as a bare type name (`address: {type: 'Address'}`, verified live). Extending it is a core API change for one consumer. |
-| **Do less** | (a) Use the `describe_all`/`describe_table` operation output as the IR. (b) Emit only the IR and let the iOS/Android SDKs generate models in Swift/Kotlin. (c) Reuse the TS emitter's `mapType` and string-map its output. | (a) `dataLayer/schemaDescribe.ts` `pushAtt` reduces `elements` to a type name, nested `properties` to `{type, name}`, `computed` to `true`, and drops relationship targets — lossy for every non-scalar attribute. (b) The acceptance requires generated models in the demo app now, and generators written in Swift and Kotlin re-implement the naming/type rules twice more — the opposite of "recorded once". (c) `mapType` collapses `Int`/`Long`/`Float` to `number`, `Bytes`/`Blob`/`Any` to `any` and `Date` to `string`. The smallest sufficient change is the chosen one: extend `regenerateAll` right after its existing filtered `collectTables` call, building one IR from that same list when a client option is set. |
-| **Chosen** | A language-neutral **IR v1** built in this package from live `Table.attributes`, the GraphQL type registry and normalized `sync.yaml` profiles; Swift and Kotlin emitters that read only the IR; contract hashing and a read/write/storage compatibility diff in the same module; component options and a small CLI as entry points; a public `index.js` for the gateway and Studio. | Beats the rejected options on the stated facts; keeps one implementation of every rule; needs no core or pro change. |
+| Axis                | Candidate                                                                                                                                                                                                                                                                                                                                                                            | Fact that decides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Different layer** | (a) Harper core: a `harper generate-client` subcommand and a core IR endpoint beside `defineTable`. (b) The sync gateway (pro, #10), which will own `sync.yaml`. (c) SwiftPM/Gradle build plugins that shell out to a Node generator.                                                                                                                                                | (a) Core already exposes everything needed — live `Table.attributes` plus the GraphQL type registry a component reaches as `scope.resources.allTypes` (traced below) — so no core change is required, and the design doc's M8 assigns the work to this package ("extends it rather than starting over"); a core subcommand would also tie emitter iterations to core releases. (b) The gateway does not exist yet, but codegen is a phase-0 mechanism (design doc M8: thin and cached strategies need typed models before any sync machinery). Both are served by building the IR here and **exporting** it (`buildSchemaIR`) so the gateway and Studio import one implementation. (c) Needs the same IR and emitters plus two adapters and Node in mobile builds; it removes no deliverable, and the CLI already allows build-time invocation. |
+| **Deeper cause**    | Make core's schema carry a canonical client contract — e.g. build the IR from `Table.properties` (the JSON-Schema fragments from `resources/jsonSchemaTypes.ts`).                                                                                                                                                                                                                    | `attributeToFragment` emits `nullable` only when `true` (GraphQL never sets `true`, so undefined-means-nullable and `[T!]` element requiredness are unrecoverable) and omits computed expressions, relationship targets and `sealed`; nested types appear as a bare type name (`address: {type: 'Address'}`, verified live). Extending it is a core API change for one consumer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Do less**         | (a) Use the `describe_all`/`describe_table` operation output as the IR. (b) Emit only the IR and let the iOS/Android SDKs generate models in Swift/Kotlin. (c) Reuse the TS emitter's `mapType` and string-map its output.                                                                                                                                                           | (a) `dataLayer/schemaDescribe.ts` `pushAtt` reduces `elements` to a type name, nested `properties` to `{type, name}`, `computed` to `true`, and drops relationship targets — lossy for every non-scalar attribute. (b) The acceptance requires generated models in the demo app now, and generators written in Swift and Kotlin re-implement the naming/type rules twice more — the opposite of "recorded once". (c) `mapType` collapses `Int`/`Long`/`Float` to `number`, `Bytes`/`Blob`/`Any` to `any` and `Date` to `string`. The smallest sufficient change is the chosen one: extend `regenerateAll` right after its existing filtered `collectTables` call, building one IR from that same list when a client option is set.                                                                                                              |
+| **Chosen**          | A language-neutral **IR v1** built in this package from live `Table.attributes`, the GraphQL type registry and normalized `sync.yaml` profiles; Swift and Kotlin emitters that read only the IR; contract hashing and a read/write/storage compatibility diff in the same module; component options and a small CLI as entry points; a public `index.js` for the gateway and Studio. | Beats the rejected options on the stated facts; keeps one implementation of every rule; needs no core or pro change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 The existing TS/JSDoc emitters are left byte-for-byte unchanged (users' generated files must not
 churn); moving them onto the IR is a follow-up.
@@ -56,7 +56,7 @@ schema covering every attribute kind:
 - **Live `Table.attributes` keep only the type name of a nested object** (`address: Address` →
   `{type: 'Address'}`; `[PurchaseLine!]!` → `elements: {type: 'PurchaseLine', nullable: false}`).
   Relationship attributes keep `relationship`, a non-enumerable `relationshipReference
-  {database, table}` (GraphQL), and `definition`. `scope.resources.allTypes` in a component holds
+{database, table}` (GraphQL), and `definition`. `scope.resources.allTypes` in a component holds
   every GraphQL type with its connected structure, and `scope.directory` is the application
   directory. `defineTable` relations carry `relationship` and a lazy `definition.tableClass`
   instead of `relationshipReference`.
@@ -76,7 +76,7 @@ schema covering every attribute kind:
 - Every live table has `tableName`, `databaseName`, `primaryKey`, `attributes`, `sealed` statics.
 - Node refuses to type-strip `.ts` files under `node_modules`, and this package is loaded from
   `node_modules` by Harper's component loader (`componentLoader.ts`: `join(componentDirectory,
-  config.extensionModule)`); CI also tests Node 20. New modules therefore stay JavaScript with
+config.extensionModule)`); CI also tests Node 20. New modules therefore stay JavaScript with
   JSDoc types, like the rest of the repository.
 
 ## IR v1
@@ -86,45 +86,88 @@ timestamps):
 
 ```jsonc
 {
-  "irVersion": 1,
-  "generator": "@harperfast/schema-codegen@<version>",   // informational, not hashed
-  "schemaHash": "<sha256 hex>",
-  "tables": [{
-    "database": "data", "name": "Order", "typeName": "Order",
-    "primaryKey": "id", "sealed": false, "hash": "<sha256 hex>",
-    "profiles": ["my-orders"],
-    "attributes": [{
-      "name": "amount",
-      "type": { "kind": "scalar", "scalar": "Float" },
-      // or { "kind": "array", "element": <type>, "elementNullable": true }
-      // or { "kind": "object", "type": "OrderLine" }                      -> "types" entry
-      // or { "kind": "record", "database": "data", "table": "Customer" }  (embedded table shape)
-      "nullable": true, "primaryKey": false, "indexed": false,
-      "serverManaged": null,            // "createdTime" | "updatedTime" | null
-      "computed": null,                 // { "from": "<expr>" | null, "version": "<v>" | null }
-      "readOnly": false,                // serverManaged || computed
-      "description": "…"                // optional, not hashed
-    }],
-    "relations": [{ "name": "customer", "cardinality": "one", "from": "customerId",
-                    "target": { "database": "data", "table": "Customer" } }],
-    "projections": {
-      "record": [{ "name": "id", "optional": false }],
-      "insert": [], "patch": [], "query": [],
-      "upsert": [],                     // null when a full replacement is unsafe (Blob attributes)
-      "clearable": ["note"]             // patch attributes that may be set to null
-    },
-    "storage": { "versionColumn": "_version", "extraColumn": "_extra",
-                 "columns": [{ "name": "id", "affinity": "TEXT" }] }
-  }],
-  "types": [{ "name": "OrderLine", "typeName": "OrderLine", "attributes": [] }],
-  "profiles": [{
-    "name": "my-orders", "direction": "pull", "retention": "30d", "retentionMs": 2592000000,
-    "hash": "<sha256 hex>", "schemaHash": "<sha256 hex>",
-    "tables": [{ "database": "data", "table": "Order",
-                 "scope": { "type": "match", "conditions": [
-                   { "attribute": "customerId", "operator": "equals", "source": "claim", "claim": "sub" } ] } }]
-  }],
-  "diagnostics": [{ "level": "error", "code": "SCOPE_ATTRIBUTE_UNKNOWN", "profile": "…", "message": "…" }]
+	"irVersion": 1,
+	"generator": "@harperfast/schema-codegen@<version>", // informational, not hashed
+	"schemaHash": "<sha256 hex>",
+	"tables": [
+		{
+			"database": "data",
+			"name": "Order",
+			"typeName": "Order",
+			"primaryKey": "id",
+			"sealed": false,
+			"hash": "<sha256 hex>",
+			"profiles": ["my-orders"],
+			"attributes": [
+				{
+					"name": "amount",
+					"type": { "kind": "scalar", "scalar": "Float" },
+					// or { "kind": "array", "element": <type>, "elementNullable": true }
+					// or { "kind": "object", "type": "OrderLine" }                      -> "types" entry
+					// or { "kind": "record", "database": "data", "table": "Customer" }  (embedded table shape)
+					"nullable": true,
+					"primaryKey": false,
+					"indexed": false,
+					"serverManaged": null, // "createdTime" | "updatedTime" | null
+					"computed": null, // { "from": "<expr>" | null, "version": "<v>" | null }
+					"readOnly": false, // serverManaged || computed
+					"description": "…", // optional, not hashed
+				},
+			],
+			"relations": [
+				{
+					"name": "customer",
+					"cardinality": "one",
+					"from": "customerId",
+					"target": { "database": "data", "table": "Customer" },
+				},
+			],
+			"projections": {
+				"record": [{ "name": "id", "optional": false }],
+				"insert": [],
+				"patch": [],
+				"query": [],
+				"upsert": [], // null when a full replacement is unsafe (Blob attributes)
+				"clearable": ["note"], // patch attributes that may be set to null
+			},
+			"storage": {
+				"versionColumn": "_version",
+				"extraColumn": "_extra",
+				"columns": [{ "name": "id", "affinity": "TEXT" }],
+			},
+		},
+	],
+	"types": [{ "name": "OrderLine", "typeName": "OrderLine", "attributes": [] }],
+	"profiles": [
+		{
+			"name": "my-orders",
+			"direction": "pull",
+			"retention": "30d",
+			"retentionMs": 2592000000,
+			"hash": "<sha256 hex>",
+			"schemaHash": "<sha256 hex>",
+			"tables": [
+				{
+					"database": "data",
+					"table": "Order",
+					"scope": {
+						"type": "match",
+						"conditions": [
+							{
+								"attribute": "customerId",
+								"operator": "equals",
+								"source": "claim",
+								"claim": "sub",
+							},
+						],
+					},
+				},
+			],
+		},
+	],
+	"diagnostics": [
+		{ "level": "error", "code": "SCOPE_ATTRIBUTE_UNKNOWN", "profile": "…", "message": "…" },
+	],
 }
 ```
 
@@ -161,21 +204,21 @@ timestamps):
 
 ## Type mapping (the recorded decisions)
 
-| Harper | Swift | Kotlin | SQLite affinity | Row encoding (`HarperValue`) |
-|---|---|---|---|---|
-| `ID`, `String` | `String` | `String` | TEXT | string |
-| `Int` (int32) | `Int` | `Int` | INTEGER | int |
-| `Long` (\|v\| ≤ 2^53) | `Int64` | `Long` | INTEGER | int |
-| `Float` | `Double` | `Double` | REAL | double (ints accepted) |
-| `BigInt` (arbitrary) | `HarperBigInt` (decimal-string value type) | `java.math.BigInteger` | TEXT | string of digits (ints accepted) |
-| `Boolean` | `Bool` | `Boolean` | INTEGER | bool (0/1 accepted) |
-| `Date` | `Date` | `java.time.Instant` | REAL (epoch ms) | double epoch ms (ISO-8601 strings accepted) |
-| `Bytes` | `Data` | `ByteArray` | BLOB | bytes (base64 strings accepted) |
-| `Blob` | `HarperValue?`, read-only | `HarperValue?`, read-only | BLOB | whatever the transport delivered |
-| `Any` | `HarperValue` | `HarperValue` | TEXT (JSON) | any |
-| `[T]` | `[T]` / `[T?]` | `List<T>` / `List<T?>` | TEXT (JSON) | array |
-| nested type | generated `struct` | generated `data class` | TEXT (JSON) | object |
-| relation | not a property | not a property | no column | — |
+| Harper                | Swift                                      | Kotlin                    | SQLite affinity | Row encoding (`HarperValue`)                |
+| --------------------- | ------------------------------------------ | ------------------------- | --------------- | ------------------------------------------- |
+| `ID`, `String`        | `String`                                   | `String`                  | TEXT            | string                                      |
+| `Int` (int32)         | `Int`                                      | `Int`                     | INTEGER         | int                                         |
+| `Long` (\|v\| ≤ 2^53) | `Int64`                                    | `Long`                    | INTEGER         | int                                         |
+| `Float`               | `Double`                                   | `Double`                  | REAL            | double (ints accepted)                      |
+| `BigInt` (arbitrary)  | `HarperBigInt` (decimal-string value type) | `java.math.BigInteger`    | TEXT            | string of digits (ints accepted)            |
+| `Boolean`             | `Bool`                                     | `Boolean`                 | INTEGER         | bool (0/1 accepted)                         |
+| `Date`                | `Date`                                     | `java.time.Instant`       | REAL (epoch ms) | double epoch ms (ISO-8601 strings accepted) |
+| `Bytes`               | `Data`                                     | `ByteArray`               | BLOB            | bytes (base64 strings accepted)             |
+| `Blob`                | `HarperValue?`, read-only                  | `HarperValue?`, read-only | BLOB            | whatever the transport delivered            |
+| `Any`                 | `HarperValue`                              | `HarperValue`             | TEXT (JSON)     | any                                         |
+| `[T]`                 | `[T]` / `[T?]`                             | `List<T>` / `List<T?>`    | TEXT (JSON)     | array                                       |
+| nested type           | generated `struct`                         | generated `data class`    | TEXT (JSON)     | object                                      |
+| relation              | not a property                             | not a property            | no column       | —                                           |
 
 Reasons for the non-obvious rows:
 
@@ -197,7 +240,7 @@ Reasons for the non-obvious rows:
   opaque, optional, read-only `HarperValue`, and the table has no upsert projection (see
   Projections). A typed blob reference replaces this when blob sync is designed.
 - **Any → `HarperValue`**: a closed JSON-like enum (`null/bool/int/double/string/bytes/array/
-  object`) that is `Sendable`, `Hashable` and (Swift) `Codable`, so models stay value types.
+object`) that is `Sendable`, `Hashable` and (Swift) `Codable`, so models stay value types.
 - **Bytes in Kotlin**: `ByteArray` has identity equality, so generated data classes that hold one
   directly override `equals`/`hashCode` with content comparison; `HarperValue.BytesValue` compares
   by content.
@@ -268,18 +311,18 @@ documented format so the gateway (M1) inherits a tested normalizer:
 ```yaml
 profiles:
   storefront:
-    direction: pull            # pull (default) | push | bidirectional
-    retention: 14d             # ms | s | m | h | d | w
-    tables: [Product]          # list form: profile-level scope (default: all)
+    direction: pull # pull (default) | push | bidirectional
+    retention: 14d # ms | s | m | h | d | w
+    tables: [Product] # list form: profile-level scope (default: all)
   my-orders:
     retention: 30d
     scope:
-      customerId: $token.sub   # claim reference; $user.<field> for the user record
+      customerId: $token.sub # claim reference; $user.<field> for the user record
     tables: [Order]
   bench-seg10:
     tables:
-      BenchItem:               # map form: per-table database/scope override
-        scope: { seg: s10 }    # literal equality; a list means membership
+      BenchItem: # map form: per-table database/scope override
+        scope: { seg: s10 } # literal equality; a list means membership
 ```
 
 Scope values: a scalar is a literal equality; a string starting with `$token.`/`$user.` is a
@@ -320,22 +363,22 @@ limit left on; it is loaded only when `syncProfiles` is configured.
   old client can apply without regenerating: new tables' storage descriptors, added columns,
   changed computed expressions (recompute pass, issue #18 finding).
 
-| Change (to a table unless noted) | read | write | storage |
-|---|---|---|---|
-| table added | — | — | — (new table) |
-| table removed; PK changed; attribute type changed | breaking | breaking | breaking |
-| nullable attribute added, table not sealed; index changed | — | — | — (add column) |
-| attribute added to a `@sealed` table | — | breaking (old model drops it on `PUT`) | — |
-| required (`!`) attribute added | — | breaking (old inserts omit it) | — |
-| attribute removed that the old model required on read | breaking | — | — |
-| attribute removed from a `@sealed` table | — | breaking (old writes send it) | — |
-| attribute became nullable where the old model required it | breaking | — | — |
-| attribute became required on insert, or writable became read-only | — | breaking | — |
-| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]` | breaking / — | — / breaking | — |
-| computed expression/version changed | — | — | — (recompute) |
-| `sealed` changed | — | breaking | — |
-| version/extra column relocated (attribute named `_version`/`_extra` added) | — | — | breaking |
-| nested object type: same rules, never sealed | | | |
+| Change (to a table unless noted)                                           | read         | write                                  | storage        |
+| -------------------------------------------------------------------------- | ------------ | -------------------------------------- | -------------- |
+| table added                                                                | —            | —                                      | — (new table)  |
+| table removed; PK changed; attribute type changed                          | breaking     | breaking                               | breaking       |
+| nullable attribute added, table not sealed; index changed                  | —            | —                                      | — (add column) |
+| attribute added to a `@sealed` table                                       | —            | breaking (old model drops it on `PUT`) | —              |
+| required (`!`) attribute added                                             | —            | breaking (old inserts omit it)         | —              |
+| attribute removed that the old model required on read                      | breaking     | —                                      | —              |
+| attribute removed from a `@sealed` table                                   | —            | breaking (old writes send it)          | —              |
+| attribute became nullable where the old model required it                  | breaking     | —                                      | —              |
+| attribute became required on insert, or writable became read-only          | —            | breaking                               | —              |
+| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]`                       | breaking / — | — / breaking                           | —              |
+| computed expression/version changed                                        | —            | —                                      | — (recompute)  |
+| `sealed` changed                                                           | —            | breaking                               | —              |
+| version/extra column relocated (attribute named `_version`/`_extra` added) | —            | —                                      | breaking       |
+| nested object type: same rules, never sealed                               |              |                                        |                |
 
 The gateway (#10) chooses by profile direction: `pull` checks `read`, `push` checks `write`,
 `bidirectional` both; `storage` always forces a resync. With no consumer for the hello negotiation
@@ -353,9 +396,9 @@ Component options (dev mode, flat like the existing `schemaTypes`/`jsdoc`):
   schemaIR: client/harper-schema.json
   syncProfiles: sync.yaml
   swift: ios/HarperModels
-  swiftModule: HarperModels          # default HarperModels
+  swiftModule: HarperModels # default HarperModels
   kotlin: android/harper-models
-  kotlinPackage: com.example.harper  # default harper.models
+  kotlinPackage: com.example.harper # default harper.models
 ```
 
 - Client generation runs only when `schemaIR`, `swift` or `kotlin` is set; otherwise nothing new

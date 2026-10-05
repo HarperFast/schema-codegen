@@ -1,9 +1,11 @@
 /** @typedef {import('harperdb').Scope} Scope */
-import { setTimeout as delay } from 'node:timers/promises';
+import { createRegenerationScheduler } from './utils/createRegenerationScheduler.js';
 import { setLogger } from './utils/logger.js';
-import { regenerateAll } from './utils/regenerateAll.js';
+import { hasClientOutputs, regenerateAll } from './utils/regenerateAll.js';
 
 export const suppressHandleApplicationWarning = true;
+
+const INITIAL_DELAY_MS = 5000;
 
 /**
  * @param {Scope} scope
@@ -16,53 +18,74 @@ export async function handleApplication(scope) {
 		return;
 	}
 
-	const watchConfig = scope.options.get(['watch']);
+	/**
+	 * @param {string} key
+	 * @returns {any}
+	 */
+	const option = (key) => scope.options.get([key]);
+	const watchConfig = option('watch');
 	const shouldWatch = watchConfig === true || watchConfig === undefined;
-	const globalTypes = /** @type {string} */ (scope.options.get(['globalTypes']));
-	const schemaTypes = /** @type {string} */ (scope.options.get(['schemaTypes']));
-	const jsdoc = /** @type {string | undefined} */ (scope.options.get(['jsdoc']));
-	const moduleName = /** @type {string | undefined} */ (scope.options.get(['module']));
-	const includeDatabases = /** @type {string[] | undefined} */ (
-		scope.options.get(['includeDatabases'])
+	const globalTypes = /** @type {string} */ (option('globalTypes'));
+	const schemaTypes = /** @type {string} */ (option('schemaTypes'));
+	const jsdoc = /** @type {string | undefined} */ (option('jsdoc'));
+	const client = {
+		schemaIR: /** @type {string | undefined} */ (option('schemaIR')),
+		syncProfiles: /** @type {string | undefined} */ (option('syncProfiles')),
+		swift: /** @type {string | undefined} */ (option('swift')),
+		swiftModule: /** @type {string | undefined} */ (option('swiftModule')),
+		kotlin: /** @type {string | undefined} */ (option('kotlin')),
+		kotlinPackage: /** @type {string | undefined} */ (option('kotlinPackage')),
+		types: /** @type {any} */ (scope).resources?.allTypes,
+	};
+	const options = {
+		module: /** @type {string | undefined} */ (option('module')),
+		includeDatabases: /** @type {string[] | undefined} */ (option('includeDatabases')),
+		excludeDatabases: /** @type {string[] | undefined} */ (option('excludeDatabases')),
+		baseDirectory: /** @type {any} */ (scope).directory,
+		client,
+	};
+
+	const scheduler = createRegenerationScheduler(
+		() => regenerateAll(globalTypes, schemaTypes, jsdoc, options),
+		{
+			onError: (error) =>
+				scope.logger.error?.(
+					`@harperfast/schema-codegen failed to regenerate: ${/** @type {Error} */ (error)?.stack ?? error}`,
+				),
+		},
 	);
-	const excludeDatabases = /** @type {string[] | undefined} */ (
-		scope.options.get(['excludeDatabases'])
-	);
-	const options = { module: moduleName, includeDatabases, excludeDatabases };
-
-	if (shouldWatch) {
-		scope.on('close', scopeClosed);
-	}
-
-	// Do not await this.
-	delay(5000).then(() => {
-		// Initial generation
-		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
-
+	const schedule = () => scheduler.schedule();
+	let started = false;
+	const initialTimer = setTimeout(() => {
+		started = true;
+		scheduler.schedule();
 		if (shouldWatch) {
-			// Watch for schema/database changes via events
-			scope.databaseEvents.on('updateTable', updateTable);
-			scope.databaseEvents.on('dropTable', dropTable);
-			scope.databaseEvents.on('dropDatabase', dropDatabase);
+			scope.databaseEvents.on('updateTable', schedule);
+			scope.databaseEvents.on('dropTable', schedule);
+			scope.databaseEvents.on('dropDatabase', schedule);
 		}
-	});
+	}, INITIAL_DELAY_MS);
 
-	function updateTable() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
+	if (shouldWatch && client.syncProfiles && hasClientOutputs(client)) {
+		try {
+			/** @type {any} */ (scope).handleEntry({ files: client.syncProfiles }, () => {
+				if (started) scheduler.schedule();
+			});
+		} catch (error) {
+			scope.logger.warn?.(
+				`@harperfast/schema-codegen cannot watch ${client.syncProfiles}; edits apply on the next schema change: ${/** @type {Error} */ (error)?.message}`,
+			);
+		}
 	}
 
-	function dropTable() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
-	}
-
-	function dropDatabase() {
-		regenerateAll(globalTypes, schemaTypes, jsdoc, options);
-	}
+	scope.on('close', scopeClosed);
 
 	function scopeClosed() {
-		scope.databaseEvents.off('updateTable', updateTable);
-		scope.databaseEvents.off('dropTable', dropTable);
-		scope.databaseEvents.off('dropDatabase', dropDatabase);
+		clearTimeout(initialTimer);
+		scheduler.close();
+		scope.databaseEvents.off('updateTable', schedule);
+		scope.databaseEvents.off('dropTable', schedule);
+		scope.databaseEvents.off('dropDatabase', schedule);
 		scope.off('close', scopeClosed);
 	}
 }

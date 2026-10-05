@@ -1,0 +1,493 @@
+/** @import { IRAffinity, IRAttribute, IRObjectType, IRStorage, IRTable, IRType, SchemaIR } from './irTypes.js' */
+import { affinityOf } from './buildSchemaIR.js';
+import { compareText } from './syncProfiles.js';
+import { assertSchemaIR } from './validateSchemaIR.js';
+
+/** @typedef {'read' | 'write' | 'storage'} BreakAxis */
+
+/**
+ * @typedef {Object} SchemaChange
+ * @property {string} kind
+ * @property {string} database
+ * @property {string} table
+ * @property {string} [attribute]
+ * @property {string} [path] the nested attribute path, for changes inside object types
+ * @property {BreakAxis[]} breaks what the change breaks for a client generated from the old IR
+ * @property {string} message
+ */
+
+/**
+ * @typedef {Object} SchemaDelta
+ * @property {{ database: string, table: string, storage: IRStorage }[]} addedTables
+ * @property {{ database: string, table: string, addColumns: { name: string, affinity: IRAffinity }[], extraColumn: string | null, recompute: { attribute: string, from: string | null, version: string | null }[] }[]} tables
+ */
+
+/**
+ * @typedef {Object} SchemaDiff
+ * @property {string} fromHash
+ * @property {string} toHash
+ * @property {{ read: Compatibility, write: Compatibility, storage: Compatibility }} compatibility
+ * @property {SchemaChange[]} changes
+ * @property {{ kind: 'typeRenamed', name: string, from: string, to: string }[]} source changed public type names
+ * @property {{ kind: 'added' | 'removed' | 'changed', name: string }[]} profiles
+ * @property {SchemaDelta} delta what a client generated from the old IR applies to keep syncing
+ */
+
+/** @typedef {'identical' | 'additive' | 'breaking'} Compatibility */
+
+/**
+ * @typedef {Object} TypeFinding
+ * @property {string} path
+ * @property {string} kind
+ * @property {boolean} read
+ * @property {boolean} write
+ * @property {string} message
+ */
+
+/**
+ * Classifies how moving from one IR to another affects clients generated from the first: whether
+ * their decoding (`read`), their writes (`write`) or their replica layout (`storage`) breaks, and
+ * what an additive change asks them to apply.
+ * @param {SchemaIR} from
+ * @param {SchemaIR} to
+ * @returns {SchemaDiff}
+ */
+export function diffSchemaIR(from, to) {
+	assertSchemaIR(from);
+	assertSchemaIR(to);
+	/** @type {SchemaChange[]} */
+	const changes = [];
+	/** @type {SchemaDiff['source']} */
+	const source = [];
+	/** @type {SchemaDelta} */
+	const delta = { addedTables: [], tables: [] };
+	const fromTypes = new Map(from.types.map((type) => [type.name, type]));
+	const toTypes = new Map(to.types.map((type) => [type.name, type]));
+	const fromTables = new Map(from.tables.map((table) => [keyOf(table), table]));
+	const toTables = new Map(to.tables.map((table) => [keyOf(table), table]));
+	const keys = [...new Set([...fromTables.keys(), ...toTables.keys()])].sort(compareText);
+
+	for (const key of keys) {
+		const before = fromTables.get(key);
+		const after = toTables.get(key);
+		if (!before && after) {
+			changes.push({
+				kind: 'tableAdded',
+				database: after.database,
+				table: after.name,
+				breaks: [],
+				message: `table ${after.database}.${after.name} added`,
+			});
+			delta.addedTables.push({
+				database: after.database,
+				table: after.name,
+				storage: after.storage,
+			});
+			continue;
+		}
+		if (before && !after) {
+			changes.push({
+				kind: 'tableRemoved',
+				database: before.database,
+				table: before.name,
+				breaks: ['read', 'write', 'storage'],
+				message: `table ${before.database}.${before.name} removed`,
+			});
+			continue;
+		}
+		if (!before || !after) continue;
+		if (before.typeName !== after.typeName) {
+			source.push({ kind: 'typeRenamed', name: key, from: before.typeName, to: after.typeName });
+		}
+		if (before.hash !== after.hash) {
+			diffTable(before, after, fromTypes, toTypes, changes, delta);
+		}
+	}
+	for (const [name, type] of fromTypes) {
+		const next = toTypes.get(name);
+		if (next && next.typeName !== type.typeName) {
+			source.push({ kind: 'typeRenamed', name, from: type.typeName, to: next.typeName });
+		}
+	}
+
+	const identical = from.schemaHash === to.schemaHash;
+	/**
+	 * @param {BreakAxis} axis
+	 * @returns {Compatibility}
+	 */
+	const compatibilityOf = (axis) =>
+		identical
+			? 'identical'
+			: changes.some((change) => change.breaks.includes(axis))
+				? 'breaking'
+				: 'additive';
+
+	return {
+		fromHash: from.schemaHash,
+		toHash: to.schemaHash,
+		compatibility: {
+			read: compatibilityOf('read'),
+			write: compatibilityOf('write'),
+			storage: compatibilityOf('storage'),
+		},
+		changes,
+		source,
+		profiles: diffProfiles(from, to),
+		delta,
+	};
+}
+
+/**
+ * @param {{ database: string, name: string }} table
+ * @returns {string}
+ */
+function keyOf(table) {
+	return `${table.database}.${table.name}`;
+}
+
+/**
+ * @param {IRAttribute} attribute
+ * @returns {boolean}
+ */
+function requiredOnInsert(attribute) {
+	return !attribute.readOnly && !attribute.primaryKey && !attribute.nullable;
+}
+
+/**
+ * @param {IRTable} before
+ * @param {IRTable} after
+ * @param {Map<string, IRObjectType>} fromTypes
+ * @param {Map<string, IRObjectType>} toTypes
+ * @param {SchemaChange[]} changes
+ * @param {SchemaDelta} delta
+ */
+function diffTable(before, after, fromTypes, toTypes, changes, delta) {
+	const table = { database: after.database, table: after.name };
+	/**
+	 * @param {string} kind
+	 * @param {BreakAxis[]} breaks
+	 * @param {string} message
+	 * @param {{ attribute?: string, path?: string }} [where]
+	 */
+	const record = (kind, breaks, message, where = {}) =>
+		changes.push({ kind, ...table, ...where, breaks, message });
+	const name = keyOf(after);
+
+	if (before.primaryKey !== after.primaryKey) {
+		record(
+			'primaryKeyChanged',
+			['read', 'write', 'storage'],
+			`${name} primary key changed from ${before.primaryKey} to ${after.primaryKey}`,
+		);
+		return;
+	}
+	const metadataMoved =
+		before.storage.versionColumn !== after.storage.versionColumn ||
+		(before.storage.extraColumn !== null &&
+			after.storage.extraColumn !== null &&
+			before.storage.extraColumn !== after.storage.extraColumn);
+	if (metadataMoved) {
+		record(
+			'metadataColumnMoved',
+			['storage'],
+			`${name} replica metadata columns moved (an attribute now uses ${before.storage.versionColumn} or ${before.storage.extraColumn})`,
+		);
+	}
+	if (before.sealed !== after.sealed) {
+		record(
+			'sealedChanged',
+			['write'],
+			after.sealed
+				? `${name} became @sealed: clients that send undeclared attributes are rejected`
+				: `${name} is no longer @sealed: clients without an overflow bag drop undeclared attributes on PUT`,
+		);
+	}
+
+	const beforeAttributes = new Map(
+		before.attributes.map((attribute) => [attribute.name, attribute]),
+	);
+	const afterAttributes = new Map(after.attributes.map((attribute) => [attribute.name, attribute]));
+	/** @type {{ name: string, affinity: IRAffinity }[]} */
+	const addColumns = [];
+	/** @type {{ attribute: string, from: string | null, version: string | null }[]} */
+	const recompute = [];
+	const oldMetadataColumns = new Set([before.storage.versionColumn, before.storage.extraColumn]);
+
+	for (const [attributeName, previous] of beforeAttributes) {
+		if (afterAttributes.has(attributeName)) continue;
+		/** @type {BreakAxis[]} */
+		const breaks = [];
+		if (!previous.nullable) breaks.push('read');
+		if (after.sealed && !previous.readOnly) breaks.push('write');
+		record('attributeRemoved', breaks, `${name}.${attributeName} removed`, {
+			attribute: attributeName,
+		});
+	}
+	for (const [attributeName, current] of afterAttributes) {
+		const previous = beforeAttributes.get(attributeName);
+		const where = { attribute: attributeName };
+		if (!previous) {
+			/** @type {BreakAxis[]} */
+			const breaks = [];
+			if (requiredOnInsert(current)) breaks.push('write');
+			else if (before.sealed && !current.readOnly) breaks.push('write');
+			record('attributeAdded', breaks, `${name}.${attributeName} added`, where);
+			if (!oldMetadataColumns.has(attributeName)) {
+				addColumns.push({ name: attributeName, affinity: affinityOf(current.type) });
+			}
+			if (current.computed) {
+				recompute.push({
+					attribute: attributeName,
+					from: current.computed.from,
+					version: current.computed.version,
+				});
+			}
+			continue;
+		}
+
+		const findings = compareTypes(
+			previous.type,
+			current.type,
+			fromTypes,
+			toTypes,
+			attributeName,
+			new Set(),
+		);
+		for (const finding of findings) {
+			/** @type {BreakAxis[]} */
+			const breaks = [];
+			if (finding.read) breaks.push('read');
+			if (finding.write) breaks.push('write');
+			record(finding.kind, breaks, `${name}.${finding.message}`, { ...where, path: finding.path });
+		}
+		if (affinityOf(previous.type) !== affinityOf(current.type)) {
+			record(
+				'columnAffinityChanged',
+				['storage'],
+				`${name}.${attributeName} is now stored as ${affinityOf(current.type)}`,
+				where,
+			);
+		}
+		if (!previous.nullable && current.nullable) {
+			record(
+				'attributeBecameNullable',
+				['read'],
+				`${name}.${attributeName} became nullable`,
+				where,
+			);
+		}
+		if (!requiredOnInsert(previous) && requiredOnInsert(current)) {
+			record(
+				'attributeBecameRequired',
+				['write'],
+				`${name}.${attributeName} became required on insert`,
+				where,
+			);
+		}
+		if (!previous.readOnly && current.readOnly) {
+			record(
+				'attributeBecameReadOnly',
+				['write'],
+				`${name}.${attributeName} became read-only`,
+				where,
+			);
+		}
+		if (previous.readOnly && !current.readOnly) {
+			record('attributeBecameWritable', [], `${name}.${attributeName} became writable`, where);
+		}
+		const computedChanged =
+			current.computed &&
+			(previous.computed?.from !== current.computed.from ||
+				previous.computed?.version !== current.computed.version);
+		if (computedChanged && current.computed) {
+			record('computedChanged', [], `${name}.${attributeName} computed expression changed`, where);
+			recompute.push({
+				attribute: attributeName,
+				from: current.computed.from,
+				version: current.computed.version,
+			});
+		}
+		if (previous.indexed !== current.indexed) {
+			record(
+				'indexChanged',
+				[],
+				`${name}.${attributeName} ${current.indexed ? 'is now' : 'is no longer'} indexed`,
+				where,
+			);
+		}
+	}
+
+	const relationsBefore = JSON.stringify(
+		[...before.relations].sort((a, b) => compareText(a.name, b.name)),
+	);
+	const relationsAfter = JSON.stringify(
+		[...after.relations].sort((a, b) => compareText(a.name, b.name)),
+	);
+	if (relationsBefore !== relationsAfter) {
+		record('relationsChanged', [], `${name} relationships changed`);
+	}
+
+	const extraColumn = before.storage.extraColumn === null ? after.storage.extraColumn : null;
+	if (addColumns.length > 0 || recompute.length > 0 || extraColumn !== null) {
+		delta.tables.push({ ...table, addColumns, extraColumn, recompute });
+	}
+}
+
+/**
+ * @param {IRType} before
+ * @param {IRType} after
+ * @param {Map<string, IRObjectType>} fromTypes
+ * @param {Map<string, IRObjectType>} toTypes
+ * @param {string} path
+ * @param {Set<string>} visiting
+ * @returns {TypeFinding[]}
+ */
+function compareTypes(before, after, fromTypes, toTypes, path, visiting) {
+	/**
+	 * @param {string} kind
+	 * @param {boolean} read
+	 * @param {boolean} write
+	 * @param {string} message
+	 * @returns {TypeFinding}
+	 */
+	const finding = (kind, read, write, message) => ({ path, kind, read, write, message });
+	if (before.kind !== after.kind) {
+		return [
+			finding(
+				'attributeTypeChanged',
+				true,
+				true,
+				`${path} type changed from ${before.kind} to ${after.kind}`,
+			),
+		];
+	}
+	switch (before.kind) {
+		case 'scalar': {
+			const next = /** @type {typeof before} */ (after);
+			return before.scalar === next.scalar
+				? []
+				: [
+						finding(
+							'attributeTypeChanged',
+							true,
+							true,
+							`${path} type changed from ${before.scalar} to ${next.scalar}`,
+						),
+					];
+		}
+		case 'record': {
+			const next = /** @type {typeof before} */ (after);
+			return before.database === next.database && before.table === next.table
+				? []
+				: [
+						finding(
+							'attributeTypeChanged',
+							true,
+							true,
+							`${path} now embeds ${next.database}.${next.table}`,
+						),
+					];
+		}
+		case 'array': {
+			const next = /** @type {typeof before} */ (after);
+			const findings = compareTypes(
+				before.element,
+				next.element,
+				fromTypes,
+				toTypes,
+				`${path}[]`,
+				visiting,
+			);
+			if (!before.elementNullable && next.elementNullable) {
+				findings.push(
+					finding('elementBecameNullable', true, false, `${path} elements became nullable`),
+				);
+			}
+			if (before.elementNullable && !next.elementNullable) {
+				findings.push(
+					finding('elementBecameRequired', false, true, `${path} elements became non-null`),
+				);
+			}
+			return findings;
+		}
+		case 'object': {
+			const next = /** @type {typeof before} */ (after);
+			const pair = `${before.type}\u0000${next.type}`;
+			if (visiting.has(pair)) return [];
+			const inner = new Set(visiting).add(pair);
+			const beforeAttributes = new Map(
+				(fromTypes.get(before.type)?.attributes ?? []).map((a) => [a.name, a]),
+			);
+			const afterAttributes = new Map(
+				(toTypes.get(next.type)?.attributes ?? []).map((a) => [a.name, a]),
+			);
+			/** @type {TypeFinding[]} */
+			const findings = [];
+			for (const [name, attribute] of beforeAttributes) {
+				if (!afterAttributes.has(name) && !attribute.nullable) {
+					findings.push({
+						...finding('nestedAttributeRemoved', true, false, `${path}.${name} removed`),
+						path: `${path}.${name}`,
+					});
+				}
+			}
+			for (const [name, attribute] of afterAttributes) {
+				const previous = beforeAttributes.get(name);
+				const nestedPath = `${path}.${name}`;
+				if (!previous) {
+					if (!attribute.nullable) {
+						findings.push({
+							...finding('nestedAttributeAdded', false, true, `${nestedPath} added as required`),
+							path: nestedPath,
+						});
+					}
+					continue;
+				}
+				findings.push(
+					...compareTypes(previous.type, attribute.type, fromTypes, toTypes, nestedPath, inner),
+				);
+				if (!previous.nullable && attribute.nullable) {
+					findings.push({
+						...finding(
+							'nestedAttributeBecameNullable',
+							true,
+							false,
+							`${nestedPath} became nullable`,
+						),
+						path: nestedPath,
+					});
+				}
+				if (previous.nullable && !attribute.nullable) {
+					findings.push({
+						...finding(
+							'nestedAttributeBecameRequired',
+							false,
+							true,
+							`${nestedPath} became required`,
+						),
+						path: nestedPath,
+					});
+				}
+			}
+			return findings;
+		}
+	}
+}
+
+/**
+ * @param {SchemaIR} from
+ * @param {SchemaIR} to
+ * @returns {SchemaDiff['profiles']}
+ */
+function diffProfiles(from, to) {
+	const before = new Map(from.profiles.map((profile) => [profile.name, profile.hash]));
+	const after = new Map(to.profiles.map((profile) => [profile.name, profile.hash]));
+	/** @type {SchemaDiff['profiles']} */
+	const result = [];
+	for (const name of [...new Set([...before.keys(), ...after.keys()])].sort(compareText)) {
+		if (!before.has(name)) result.push({ kind: 'added', name });
+		else if (!after.has(name)) result.push({ kind: 'removed', name });
+		else if (before.get(name) !== after.get(name)) result.push({ kind: 'changed', name });
+	}
+	return result;
+}

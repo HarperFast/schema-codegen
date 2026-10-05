@@ -158,7 +158,8 @@ public object HarperConverters {
 	public val instant: HarperConverter<Instant> = object : HarperConverter<Instant> {
 		override fun decode(value: HarperValue): Instant = when (value) {
 			is HarperValue.DoubleValue -> instantOfMillis(value.value)
-			is HarperValue.LongValue -> Instant.ofEpochMilli(value.value)
+			is HarperValue.LongValue ->
+				if (value.value in -MAX_DATE_MILLIS..MAX_DATE_MILLIS) Instant.ofEpochMilli(value.value) else throw HarperValueMismatch("date", "out-of-range date")
 			is HarperValue.StringValue ->
 				try {
 					Instant.parse(value.value)
@@ -222,7 +223,13 @@ public object HarperConverters {
 	private fun exactLong(value: Double): Long? =
 		if (value >= -9.223372036854775808E18 && value < 9.223372036854775808E18 && value == Math.rint(value)) value.toLong() else null
 
+	/** JavaScript's Date range, which is all a Harper date can hold. */
+	private const val MAX_DATE_MILLIS: Long = 8_640_000_000_000_000L
+
 	private fun instantOfMillis(milliseconds: Double): Instant {
+		if (!(milliseconds >= -MAX_DATE_MILLIS.toDouble() && milliseconds <= MAX_DATE_MILLIS.toDouble())) {
+			throw HarperValueMismatch("date", "out-of-range date")
+		}
 		val seconds = Math.floorDiv(milliseconds.toLong(), 1000L)
 		val nanos = ((milliseconds - seconds * 1000.0) * 1_000_000.0).toLong()
 		return Instant.ofEpochSecond(seconds, nanos)

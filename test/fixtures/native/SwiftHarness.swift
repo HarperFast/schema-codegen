@@ -49,6 +49,9 @@ expectThrows("a missing required attribute", { try coverage_Customer(row: ["id":
 expectThrows("a mismatched type", { try Product(row: ["id": .string("p1"), "price": .string("cheap")], version: nil) }) {
 	($0 as? HarperDecodingError) == .typeMismatch(type: "Product", attribute: "price", expected: "double", actual: "string")
 }
+expectThrows("a date that is not a number", { try coverage_Customer(row: ["id": .string("c1"), "name": .string("Ada"), "createdAt": .double(.nan), "updatedAt": .double(0)], version: nil) }) {
+	($0 as? HarperDecodingError) == .typeMismatch(type: "coverage_Customer", attribute: "createdAt", expected: "date", actual: "out-of-range date")
+}
 expectThrows("a Long at 2^63", { try coverage_Customer(row: ["id": .string("c1"), "name": .string("Ada"), "createdAt": .double(0), "updatedAt": .double(0), "visits": .double(9.223372036854775808e18)], version: nil) }) {
 	($0 as? HarperDecodingError) == .typeMismatch(type: "coverage_Customer", attribute: "visits", expected: "int", actual: "double")
 }

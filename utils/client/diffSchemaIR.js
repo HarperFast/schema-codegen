@@ -67,6 +67,8 @@ export function diffSchemaIR(from, to) {
 	const fromTables = new Map(from.tables.map((table) => [keyOf(table), table]));
 	const toTables = new Map(to.tables.map((table) => [keyOf(table), table]));
 	const keys = [...new Set([...fromTables.keys(), ...toTables.keys()])].sort(compareText);
+	/** @type {IRTable[]} */
+	const changedThroughEmbedding = [];
 
 	for (const key of keys) {
 		const before = fromTables.get(key);
@@ -108,16 +110,30 @@ export function diffSchemaIR(from, to) {
 		if (before.hash !== after.hash) {
 			const itemized = changes.length;
 			diffTable(before, after, fromTypes, toTypes, changes, delta);
-			if (changes.length === itemized) {
-				changes.push({
-					kind: 'contractChanged',
-					database: after.database,
-					table: after.name,
-					breaks: [],
-					message: `${after.database}.${after.name} changed through a nested type or an embedded table, whose own changes are listed`,
-				});
-			}
+			if (changes.length === itemized) changedThroughEmbedding.push(after);
 		}
+	}
+	for (const table of changedThroughEmbedding) {
+		const embedded = embeddedTableKeys(table, toTypes, toTables);
+		const inherited = new Set(
+			changes
+				.filter((change) => embedded.has(keyOf({ database: change.database, name: change.table })))
+				.flatMap((change) => change.breaks),
+		);
+		/** @type {BreakAxis[]} */
+		const breaks = /** @type {BreakAxis[]} */ (['read', 'write']).filter((axis) =>
+			inherited.has(axis),
+		);
+		changes.push({
+			kind: 'contractChanged',
+			database: table.database,
+			table: table.name,
+			breaks,
+			message:
+				breaks.length > 0
+					? `${table.database}.${table.name} embeds a table whose change breaks ${breaks.join(', ')}`
+					: `${table.database}.${table.name} changed through a nested type or an embedded table, whose own changes are listed`,
+		});
 	}
 	for (const [name, type] of fromTypes) {
 		const next = toTypes.get(name);
@@ -159,6 +175,34 @@ export function diffSchemaIR(from, to) {
  */
 function keyOf(table) {
 	return `${table.database}\u0000${table.name}`;
+}
+
+/**
+ * The tables a table embeds, directly or through nested types and other embedded tables; their
+ * models decode and encode inside its rows.
+ * @param {IRTable} table
+ * @param {Map<string, IRObjectType>} types
+ * @param {Map<string, IRTable>} tables
+ * @returns {Set<string>} table keys
+ */
+function embeddedTableKeys(table, types, tables) {
+	const found = new Set();
+	const visitedTypes = new Set();
+	/** @param {IRType} type */
+	const visit = (type) => {
+		if (type.kind === 'array') visit(type.element);
+		else if (type.kind === 'object' && !visitedTypes.has(type.type)) {
+			visitedTypes.add(type.type);
+			for (const attribute of types.get(type.type)?.attributes ?? []) visit(attribute.type);
+		} else if (type.kind === 'record') {
+			const key = keyOf({ database: type.database, name: type.table });
+			if (found.has(key)) return;
+			found.add(key);
+			for (const attribute of tables.get(key)?.attributes ?? []) visit(attribute.type);
+		}
+	};
+	for (const attribute of table.attributes) visit(attribute.type);
+	return found;
 }
 
 /**

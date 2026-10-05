@@ -7,8 +7,8 @@ import { GENERATED_MARKER } from './emitSupport.js';
 import { emitKotlinModule } from './emitKotlin.js';
 import { emitSwiftPackage } from './emitSwift.js';
 
-/** Skipped by the stale-file scan, as are dot folders such as SwiftPM's `.build`. */
-const BUILD_DIRECTORIES = new Set(['build', 'node_modules']);
+/** Package-root folders holding copies of generated sources that are not stale (Gradle's output). */
+const ROOT_BUILD_DIRECTORIES = new Set(['build', 'node_modules']);
 
 /**
  * Where client outputs go. Relative paths resolve against `baseDirectory`.
@@ -111,7 +111,7 @@ export function publishClientOutputs(outputs) {
 			commitStaged(staged);
 		} catch (error) {
 			for (const rest of pending.slice(index + 1)) discardStaged(rest.staged);
-			throw restorePrevious(pending.slice(0, index), error);
+			throw restorePrevious(pending.slice(0, index + 1), error);
 		}
 		(output.scaffold ? createdScaffolds : written).push(output.path);
 	});
@@ -167,11 +167,11 @@ export function findStaleGeneratedFiles(directory, outputs) {
 		for (const entry of entries) {
 			const entryPath = path.join(folder, entry.name);
 			if (entry.isDirectory()) {
-				if (!BUILD_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) {
-					walk(entryPath, depth + 1);
-				}
+				const skipped =
+					entry.name.startsWith('.') || (depth === 0 && ROOT_BUILD_DIRECTORIES.has(entry.name));
+				if (!skipped) walk(entryPath, depth + 1);
 			} else if (
-				entry.isFile() &&
+				(entry.isFile() || (entry.isSymbolicLink() && isFile(entryPath))) &&
 				/\.(swift|kt)$/.test(entry.name) &&
 				!current.has(entryPath) &&
 				isGenerated(entryPath)
@@ -182,6 +182,18 @@ export function findStaleGeneratedFiles(directory, outputs) {
 	};
 	walk(directory, 0);
 	return stale.sort();
+}
+
+/**
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isFile(filePath) {
+	try {
+		return fs.statSync(filePath).isFile();
+	} catch {
+		return false;
+	}
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 	escapeKotlinEnumEntry,
 	escapeKotlinIdentifier,
 	reservedMemberNames,
+	reservedProfileNames,
 } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
@@ -69,7 +70,6 @@ const FILE_SUPPRESSIONS =
  * @property {Map<string, IRTable>} tablesByKey
  * @property {Map<string, string>} converters list converter expression → the file-level value holding it
  * @property {ReturnType<typeof createNameAllocator>} converterNames
- * @property {string[]} reservedMembers
  */
 
 /**
@@ -90,7 +90,6 @@ export function emitKotlinModule(ir, { packageName = 'harper.models' } = {}) {
 		tablesByKey: new Map(ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table])),
 		converters: new Map(),
 		converterNames: createNameAllocator(fileScopeNames(ir)),
-		reservedMembers: reservedMemberNames(ir),
 	};
 	const packageLine = `package ${segments.map(escapeKotlinIdentifier).join('.')}\n`;
 	const header = generatedHeader(ir) + FILE_SUPPRESSIONS + '\n';
@@ -153,9 +152,10 @@ function kotlinType(type, context) {
  * @returns {Set<string>}
  */
 function fileScopeNames(ir) {
-	const reserved = reservedMemberNames(ir);
-	const names = new Set([...reserved, ...GENERATED_LOCALS]);
+	const names = new Set([...reservedProfileNames(ir), ...GENERATED_LOCALS]);
 	for (const owner of [...ir.tables, ...ir.types]) {
+		const reserved = reservedMemberNames(owner.typeName);
+		for (const name of reserved) names.add(name);
 		const members = allocateMemberNames(
 			owner.attributes.map((attribute) => attribute.name),
 			reserved,
@@ -206,14 +206,16 @@ function converterStem(type, context) {
 }
 
 /**
- * List converters are built once, as file-level values, rather than on every decode and encode.
+ * Converters other than the runtime's scalar ones are file-level values: a list converter is
+ * built once rather than on every decode and encode, and a generated type is never named inside a
+ * member body, where a member of the same name would shadow it.
  * @param {IRType} type
  * @param {KotlinContext} context
  * @returns {string}
  */
 function converterOf(type, context) {
 	const expression = converterExpression(type, context);
-	if (type.kind !== 'array') return expression;
+	if (type.kind === 'scalar') return expression;
 	let name = context.converters.get(expression);
 	if (name === undefined) {
 		name = context.converterNames.claim(`${converterStem(type, context)}Converter`);
@@ -367,7 +369,7 @@ function tableModel(table, context) {
 	const className = table.typeName;
 	const names = allocateMemberNames(
 		table.attributes.map((attribute) => attribute.name),
-		context.reservedMembers,
+		reservedMemberNames(className),
 	);
 	const identifierOf = (/** @type {string} */ raw) => /** @type {string} */ (names.get(raw));
 	const attributesByName = new Map(
@@ -563,7 +565,7 @@ function objectModel(type, context) {
 	const className = type.typeName;
 	const names = allocateMemberNames(
 		type.attributes.map((attribute) => attribute.name),
-		context.reservedMembers,
+		reservedMemberNames(className),
 	);
 	const properties = type.attributes.map((attribute) =>
 		propertyOf(
@@ -658,7 +660,7 @@ function tableSchemaLiteral(table) {
 function schemaSource(ir) {
 	const profileNames = allocateMemberNames(
 		ir.profiles.map((profile) => profile.name),
-		reservedMemberNames(ir),
+		reservedProfileNames(ir),
 	);
 	const constantOf = (/** @type {IRProfile} */ profile) =>
 		escapeKotlinIdentifier(/** @type {string} */ (profileNames.get(profile.name)));

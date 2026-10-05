@@ -120,14 +120,14 @@ Schema Codegen can also generate the typed models a mobile client works with: a 
 Kotlin module, built from a schema IR (a versioned JSON description of your tables, nested types and
 sync profiles). Turn it on with any of these options:
 
-| Option          | Default         | Description                                                                                            |
-| --------------- | --------------- | ------------------------------------------------------------------------------------------------------ |
-| `schemaIR`      | —               | Path to write the schema IR (`.json`). It is also the baseline for compatibility warnings (see below). |
-| `swift`         | —               | Directory of the Swift package to generate.                                                            |
-| `swiftModule`   | `HarperModels`  | The Swift module (and target) name.                                                                    |
-| `kotlin`        | —               | Directory of the Kotlin module to generate.                                                            |
-| `kotlinPackage` | `harper.models` | The Kotlin package.                                                                                    |
-| `syncProfiles`  | —               | Path to a `sync.yaml` describing sync profiles; edits regenerate without a restart.                    |
+| Option          | Default         | Description                                                                                                                                                                                             |
+| --------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaIR`      | —               | Path to write the schema IR (`.json`). Set it whenever you generate `swift` or `kotlin`: it is the baseline that keeps generated type names stable and lets a regeneration warn about breaking changes. |
+| `swift`         | —               | Directory of the Swift package to generate.                                                                                                                                                             |
+| `swiftModule`   | `HarperModels`  | The Swift module (and target) name.                                                                                                                                                                     |
+| `kotlin`        | —               | Directory of the Kotlin module to generate.                                                                                                                                                             |
+| `kotlinPackage` | `harper.models` | The Kotlin package.                                                                                                                                                                                     |
+| `syncProfiles`  | —               | Path to a `sync.yaml` describing sync profiles; edits regenerate without a restart.                                                                                                                     |
 
 ```yaml
 '@harperfast/schema-codegen':

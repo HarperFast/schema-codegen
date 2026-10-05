@@ -42,11 +42,5 @@ export function createRegenerationScheduler(run, { delayMs = 100, onError }) {
 			if (timer) clearTimeout(timer);
 			timer = null;
 		},
-		/** Resolves once no run is pending or in progress. */
-		async idle() {
-			while (timer || draining) {
-				await (draining ?? new Promise((resolve) => setTimeout(resolve, delayMs)));
-			}
-		},
 	};
 }

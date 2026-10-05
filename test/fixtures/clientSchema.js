@@ -216,6 +216,29 @@ export function coverageTypes() {
 	]);
 }
 
+/**
+ * Forty nested types, each holding the next twice: every path through them is distinct, so
+ * anything that walks paths instead of types never finishes.
+ * @param {string} leafType
+ * @returns {Map<string, any>}
+ */
+export function sharedChain(leafType) {
+	return new Map(
+		Array.from({ length: 40 }, (_, index) => [
+			`T${index}`,
+			{
+				attributes:
+					index === 39
+						? [{ name: 'leaf', type: leafType }]
+						: [
+								{ name: 'left', type: `T${index + 1}` },
+								{ name: 'right', type: `T${index + 1}` },
+							],
+			},
+		]),
+	);
+}
+
 /** The spike's `profiles.js`, in `sync.yaml` form. */
 export function spikeProfiles() {
 	return {

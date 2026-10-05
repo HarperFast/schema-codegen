@@ -35,18 +35,25 @@ export async function handleApplication(scope) {
 		swiftModule: /** @type {string | undefined} */ (option('swiftModule')),
 		kotlin: /** @type {string | undefined} */ (option('kotlin')),
 		kotlinPackage: /** @type {string | undefined} */ (option('kotlinPackage')),
-		types: /** @type {any} */ (scope).resources?.allTypes,
 	};
 	const options = {
 		module: /** @type {string | undefined} */ (option('module')),
 		includeDatabases: /** @type {string[] | undefined} */ (option('includeDatabases')),
 		excludeDatabases: /** @type {string[] | undefined} */ (option('excludeDatabases')),
 		baseDirectory: /** @type {any} */ (scope).directory,
-		client,
 	};
+	const closing = new AbortController();
 
 	const scheduler = createRegenerationScheduler(
-		() => regenerateAll(globalTypes, schemaTypes, jsdoc, options),
+		() =>
+			regenerateAll(globalTypes, schemaTypes, jsdoc, {
+				...options,
+				client: {
+					...client,
+					types: /** @type {any} */ (scope).resources?.allTypes,
+					signal: closing.signal,
+				},
+			}),
 		{
 			onError: (error) =>
 				scope.logger.error?.(
@@ -82,6 +89,7 @@ export async function handleApplication(scope) {
 
 	function scopeClosed() {
 		clearTimeout(initialTimer);
+		closing.abort();
 		scheduler.close();
 		scope.databaseEvents.off('updateTable', schedule);
 		scope.databaseEvents.off('dropTable', schedule);

@@ -179,7 +179,11 @@ timestamps):
   it is the primary key, server-managed, or `nullable === false` (the existing `isNullable`
   rule plus the server-managed exemption defineTable makes). Computed attributes are always
   optional (an on-device materialization may not have run, issue #18). Array elements follow the
-  same rule: `[String]` has nullable elements, `[String!]` does not.
+  same rule: `[String]` has nullable elements, `[String!]` does not. A `Blob` is optional on read
+  whatever its declaration, because sync does not deliver blob content; that read rule lives in
+  the `record` projection, while the attribute's `nullable` keeps what the server enforces, so a
+  `Blob` → `Blob!` change still changes the contract and breaks inserts (which never carry a blob;
+  a required Blob also raises a `BLOB_REQUIRED` warning).
 - **Projections** are the defineTable rules over stored attributes, plus one client rule: `Blob`
   attributes are excluded from every write projection and make `upsert` `null`, because the
   transport has no blob contract yet and a full replacement would either delete the blob
@@ -344,8 +348,10 @@ limit left on; it is loaded only when `syncProfiles` is configured.
 ## Schema hash and the additive-delta story
 
 - **Contract**: per table — database, name, PK, sealed, the storage metadata column names, and per
-  attribute (sorted by name): name, type (nested object types inlined structurally, cycles by
-  reference), read nullability, PK, indexed, server-managed, computed `{from, version}`;
+  attribute (sorted by name): name, type (object types and embedded tables by name), `nullable`,
+  PK, indexed, server-managed, computed `{from, version}`; the shapes of every object type and
+  embedded table reachable from the table, each listed once by name, so a nested change reaches
+  every table that carries it while shared and recursive types hash in linear time;
   relations by name/cardinality/key/target. Excluded: descriptions, `typeName`, attribute order,
   profile membership — none of them changes what a device stores or sends.
 - `tables[].hash` = SHA-256 of the canonical JSON (sorted keys) of the table contract;
@@ -363,22 +369,24 @@ limit left on; it is loaded only when `syncProfiles` is configured.
   old client can apply without regenerating: new tables' storage descriptors, added columns,
   changed computed expressions (recompute pass, issue #18 finding).
 
-| Change (to a table unless noted)                                           | read         | write                                  | storage        |
-| -------------------------------------------------------------------------- | ------------ | -------------------------------------- | -------------- |
-| table added                                                                | —            | —                                      | — (new table)  |
-| table removed; PK changed; attribute type changed                          | breaking     | breaking                               | breaking       |
-| nullable attribute added, table not sealed; index changed                  | —            | —                                      | — (add column) |
-| attribute added to a `@sealed` table                                       | —            | breaking (old model drops it on `PUT`) | —              |
-| required (`!`) attribute added                                             | —            | breaking (old inserts omit it)         | —              |
-| attribute removed that the old model required on read                      | breaking     | —                                      | —              |
-| attribute removed from a `@sealed` table                                   | —            | breaking (old writes send it)          | —              |
-| attribute became nullable where the old model required it                  | breaking     | —                                      | —              |
-| attribute became required on insert, or writable became read-only          | —            | breaking                               | —              |
-| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]`                       | breaking / — | — / breaking                           | —              |
-| computed expression/version changed                                        | —            | —                                      | — (recompute)  |
-| `sealed` changed                                                           | —            | breaking                               | —              |
-| version/extra column relocated (attribute named `_version`/`_extra` added) | —            | —                                      | breaking       |
-| nested object type: same rules, never sealed                               |              |                                        |                |
+| Change (to a table unless noted)                                                                                           | read         | write                                                                        | storage                                  |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| table added                                                                                                                | —            | —                                                                            | — (new table)                            |
+| table removed; PK changed; attribute type changed                                                                          | breaking     | breaking                                                                     | breaking                                 |
+| nullable attribute added, table not sealed; index changed                                                                  | —            | —                                                                            | — (add column)                           |
+| attribute added to a `@sealed` table                                                                                       | —            | breaking (old model drops it on `PUT`)                                       | —                                        |
+| required (`!`) attribute added                                                                                             | —            | breaking (old inserts omit it)                                               | —                                        |
+| attribute removed that the old model required on read                                                                      | breaking     | —                                                                            | —                                        |
+| attribute removed from a `@sealed` table                                                                                   | —            | breaking (old writes send it)                                                | —                                        |
+| attribute became nullable where the old model required it                                                                  | breaking     | —                                                                            | —                                        |
+| attribute became required on insert, or writable became read-only                                                          | —            | breaking                                                                     | —                                        |
+| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]`                                                                       | breaking / — | — / breaking                                                                 | —                                        |
+| computed expression/version changed                                                                                        | —            | —                                                                            | — (recompute)                            |
+| computed attribute or relationship added, table not sealed                                                                 | —            | breaking (old model echoes it from `_extra` on `PUT`; `validate` rejects it) | — (add column)                           |
+| stored attribute turned into a relationship                                                                                | —            | breaking (old writes send it)                                                | —                                        |
+| `sealed` changed                                                                                                           | —            | breaking                                                                     | — (an orphaned `_extra` column is inert) |
+| version/extra column relocated (attribute named `_version`/`_extra` added)                                                 | —            | —                                                                            | breaking                                 |
+| nested object type: same rules, never sealed; each type pair is compared once per table, at the first path that reaches it |              |                                                                              |                                          |
 
 The gateway (#10) chooses by profile direction: `pull` checks `read`, `push` checks `write`,
 `bidirectional` both; `storage` always forces a resync. With no consumer for the hello negotiation
@@ -409,13 +417,18 @@ Component options (dev mode, flat like the existing `schemaTypes`/`jsdoc`):
   the same fix.
 - Event-driven regenerations (`updateTable`/`dropTable`/`dropDatabase`, and `sync.yaml` edits)
   are coalesced into one trailing run and serialized, so a burst of schema events renders once and
-  an older run can never finish after a newer one. A scope closed before the initial five-second
+  an older run can never finish after a newer one. Each run reads the type registry afresh, and a
+  run still in flight when its scope closes stops before publishing. A scope closed before the initial five-second
   delay installs nothing.
-- Everything is rendered and validated in memory before any write; each file is written to a
-  sibling temporary file and renamed into place (a failed write leaves the previous file intact);
-  generated sources are published before the IR file, which is the baseline the next run diffs
-  against. Errors (YAML, IR validation, I/O) are logged at the component boundary and leave the
-  previous outputs in place; they never take Harper down.
+- Everything is rendered and validated in memory before any write. Every changed file is then
+  staged beside its target before any is renamed into place, so a failed write (a full disk)
+  publishes nothing; generated sources are renamed before the IR file, which is the baseline the
+  next run diffs against. Renames resolve symlinks (the link survives), and a target Windows holds
+  open is overwritten in place. Errors (YAML, IR validation, I/O) are logged at the component
+  boundary and leave the previous outputs in place; they never take Harper down.
+- An IR read from a file is validated before use, including its hashes: each is recomputed from
+  the contents, so a hand-merged IR that kept an old hash is refused rather than diffed as
+  unchanged.
 - `swiftModule` must be a Swift identifier and `kotlinPackage` dot-separated identifiers (keyword
   segments are backtick-escaped in source), so neither can traverse out of the output directory.
   Every string emitted into source is escaped for the target language (Kotlin `$` included).
@@ -432,10 +445,11 @@ A remote `--url` mode is deliberately absent: the only remote schema surface tod
 `describe_all`, which is lossy (do-less (a)); the gateway's IR endpoint (#16) is the right
 source and will serve `buildSchemaIR` output.
 
-Package: `bin`, `main` and an `exports` map for `index.js`, which exports `buildSchemaIR`,
-`normalizeSyncProfiles`, `diffSchemaIR`, `emitSwiftPackage` and `emitKotlinModule`; `files`
-gains `index.js` and `bin/`. Harper loads `extensionModule.js` by file path, so the `exports`
-map does not affect component loading. Toolchain floor for generated code: Swift 5.9 (iOS 13,
+Package: `bin`, and `main` for `index.js`, which exports `buildSchemaIR`, `normalizeSyncProfiles`,
+`diffSchemaIR`, `assertSchemaIR`, `emitSwiftPackage` and `emitKotlinModule` for the gateway and
+Studio; `files` gains `index.js` and `bin/`. There is deliberately no `exports` map: it would block
+the deep imports existing users may have, which is a breaking change for a feature release.
+Toolchain floor for generated code: Swift 5.9 (iOS 13,
 macOS 10.15), Kotlin 1.9 on the JVM (Android API 26 or desugaring for `java.time`/`Base64`).
 
 ## Planning review resolutions (cross-model, codex, 2026-10-05)

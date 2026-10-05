@@ -3,6 +3,7 @@ import {
 	adversarialTables,
 	coverageTables,
 	coverageTypes,
+	sharedChain,
 	spikeProfiles,
 	spikeTables,
 } from '../../test/fixtures/clientSchema.js';
@@ -107,7 +108,7 @@ describe('buildSchemaIR', () => {
 			});
 		});
 
-		it('keeps Blob attributes optional even when declared non-null', () => {
+		it('reads a required Blob as optional but keeps it required, and warns that inserts fail', () => {
 			const withRequiredBlob = build([
 				{
 					tableName: 'Files',
@@ -118,7 +119,12 @@ describe('buildSchemaIR', () => {
 					],
 				},
 			]);
-			expect(attribute(table(withRequiredBlob, 'Files'), 'file').nullable).toBe(true);
+			const files = table(withRequiredBlob, 'Files');
+			expect(attribute(files, 'file').nullable).toBe(false);
+			expect(files.projections.record).toContainEqual({ name: 'file', optional: true });
+			expect(withRequiredBlob.diagnostics).toContainEqual(
+				expect.objectContaining({ code: 'BLOB_REQUIRED', table: 'Files', attribute: 'file' }),
+			);
 		});
 
 		it('treats @embed and @decide outputs and legacy timestamps as server-written', () => {
@@ -591,6 +597,30 @@ describe('contract hashes', () => {
 		});
 		expect(table(changed, 'Snapshot').hash).not.toBe(table(original, 'Snapshot').hash);
 		expect(table(changed, 'Purchase').hash).toBe(table(original, 'Purchase').hash);
+	});
+
+	it('change when a Blob becomes required', () => {
+		const tables = coverageTables();
+		tables[2].attributes[2].nullable = false;
+		const original = buildSchemaIR({ tables: coverageTables(), types: coverageTypes() });
+		const changed = buildSchemaIR({ tables, types: coverageTypes() });
+		expect(table(changed, 'Attachment').hash).not.toBe(table(original, 'Attachment').hash);
+	});
+
+	it('cover widely shared nested types in linear time', () => {
+		const tables = [
+			{
+				tableName: 'Deep',
+				primaryKey: 'id',
+				attributes: [
+					{ name: 'id', type: 'ID', isPrimaryKey: true },
+					{ name: 'root', type: 'T0' },
+				],
+			},
+		];
+		const original = buildSchemaIR({ tables, types: sharedChain('String') });
+		const changed = buildSchemaIR({ tables, types: sharedChain('Int') });
+		expect(table(changed, 'Deep').hash).not.toBe(table(original, 'Deep').hash);
 	});
 
 	it('change when a nested type changes', () => {

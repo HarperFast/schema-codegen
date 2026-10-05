@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('published package', () => {
@@ -30,8 +31,11 @@ describe('published package', () => {
 		);
 	});
 
-	it('exposes the public API from the package root', async () => {
-		const api = await import('@harperfast/schema-codegen');
+	it('exposes the public API from the package entry point', async () => {
+		const { main } = JSON.parse(
+			fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+		);
+		const api = await import(new URL(main, import.meta.url).href);
 		expect(Object.keys(api).sort()).toEqual([
 			'IR_VERSION',
 			'assertSchemaIR',

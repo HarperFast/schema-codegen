@@ -166,4 +166,21 @@ describe('emitSwiftPackage', () => {
 			/public static let myOrders = HarperSyncProfile\(name: "my-orders", direction: \.pull, retentionMs: 2592000000, schemaHash: "[0-9a-f]{64}", tables: \[Order\.schema\]\)/,
 		);
 	});
+
+	it('gives profiles whose names sanitize alike their own constants', () => {
+		const schema =
+			emitSwiftPackage(
+				buildSchemaIR({
+					tables: spikeTables(),
+					syncProfiles: {
+						profiles: { 'my-orders': { tables: ['Order'] }, myOrders: { tables: ['Order'] } },
+					},
+				}),
+			).find((file) => file.path.endsWith('HarperSchema.swift'))?.content ?? '';
+		expect(schema).toContain(
+			'public static let profiles: [HarperSyncProfile] = [.myOrders_2, .myOrders]',
+		);
+		expect(schema).toContain('public static let myOrders_2 = HarperSyncProfile(name: "my-orders"');
+		expect(schema).toContain('public static let myOrders = HarperSyncProfile(name: "myOrders"');
+	});
 });

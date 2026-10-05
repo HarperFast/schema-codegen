@@ -33,4 +33,29 @@ describe('writeIfChanged', () => {
 		expect(fs.readFileSync(file, 'utf8')).toBe('previous');
 		expect(fs.readdirSync(directory)).toEqual(['types.ts']);
 	});
+
+	it.skipIf(process.platform === 'win32')(
+		'updates the target of a symlink and keeps the link',
+		() => {
+			const target = path.join(directory, 'shared', 'types.ts');
+			fs.mkdirSync(path.dirname(target));
+			fs.writeFileSync(target, 'previous');
+			const link = path.join(directory, 'types.ts');
+			fs.symlinkSync(target, link);
+			expect(writeIfChanged(link, 'next')).toBe(true);
+			expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+			expect(fs.readFileSync(target, 'utf8')).toBe('next');
+		},
+	);
+
+	it('overwrites in place when the target is locked against renames', () => {
+		const file = path.join(directory, 'types.ts');
+		fs.writeFileSync(file, 'previous');
+		vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+			throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+		});
+		writeFileAtomic(file, 'next');
+		expect(fs.readFileSync(file, 'utf8')).toBe('next');
+		expect(fs.readdirSync(directory)).toEqual(['types.ts']);
+	});
 });

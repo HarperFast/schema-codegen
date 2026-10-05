@@ -1,5 +1,6 @@
-/** @import { IRAffinity, IRAttribute, IRObjectType, IRStorage, IRTable, IRType, SchemaIR } from './irTypes.js' */
-import { affinityOf } from './buildSchemaIR.js';
+/** @import { IRAffinity, IRObjectType, IRStorage, IRTable, IRType, SchemaIR } from './irTypes.js' */
+import { affinityOf, requiredOnInsert } from './buildSchemaIR.js';
+import { canonicalJSON } from './canonicalHash.js';
 import { compareText } from './syncProfiles.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
@@ -97,7 +98,12 @@ export function diffSchemaIR(from, to) {
 		}
 		if (!before || !after) continue;
 		if (before.typeName !== after.typeName) {
-			source.push({ kind: 'typeRenamed', name: key, from: before.typeName, to: after.typeName });
+			source.push({
+				kind: 'typeRenamed',
+				name: `${after.database}.${after.name}`,
+				from: before.typeName,
+				to: after.typeName,
+			});
 		}
 		if (before.hash !== after.hash) {
 			diffTable(before, after, fromTypes, toTypes, changes, delta);
@@ -142,15 +148,15 @@ export function diffSchemaIR(from, to) {
  * @returns {string}
  */
 function keyOf(table) {
-	return `${table.database}.${table.name}`;
+	return `${table.database}\u0000${table.name}`;
 }
 
 /**
- * @param {IRAttribute} attribute
- * @returns {boolean}
+ * @param {IRTable} table
+ * @returns {Map<string, boolean>} attribute name → optional on read
  */
-function requiredOnInsert(attribute) {
-	return !attribute.readOnly && !attribute.primaryKey && !attribute.nullable;
+function readOptionality(table) {
+	return new Map(table.projections.record.map((field) => [field.name, field.optional]));
 }
 
 /**
@@ -171,7 +177,7 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 	 */
 	const record = (kind, breaks, message, where = {}) =>
 		changes.push({ kind, ...table, ...where, breaks, message });
-	const name = keyOf(after);
+	const name = `${after.database}.${after.name}`;
 
 	if (before.primaryKey !== after.primaryKey) {
 		record(
@@ -207,18 +213,27 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 		before.attributes.map((attribute) => [attribute.name, attribute]),
 	);
 	const afterAttributes = new Map(after.attributes.map((attribute) => [attribute.name, attribute]));
+	const relationsBefore = new Map(before.relations.map((relation) => [relation.name, relation]));
+	const relationsAfter = new Map(after.relations.map((relation) => [relation.name, relation]));
+	const optionalBefore = readOptionality(before);
+	const optionalAfter = readOptionality(after);
 	/** @type {{ name: string, affinity: IRAffinity }[]} */
 	const addColumns = [];
 	/** @type {{ attribute: string, from: string | null, version: string | null }[]} */
 	const recompute = [];
 	const oldMetadataColumns = new Set([before.storage.versionColumn, before.storage.extraColumn]);
+	const seenTypes = new Set();
+	const echoed =
+		'older models keep it in their overflow and send it back on PUT, which the server rejects';
 
 	for (const [attributeName, previous] of beforeAttributes) {
 		if (afterAttributes.has(attributeName)) continue;
 		/** @type {BreakAxis[]} */
 		const breaks = [];
-		if (!previous.nullable) breaks.push('read');
-		if (after.sealed && !previous.readOnly) breaks.push('write');
+		if (!optionalBefore.get(attributeName)) breaks.push('read');
+		if (!previous.readOnly && (after.sealed || relationsAfter.has(attributeName))) {
+			breaks.push('write');
+		}
 		record('attributeRemoved', breaks, `${name}.${attributeName} removed`, {
 			attribute: attributeName,
 		});
@@ -227,11 +242,17 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 		const previous = beforeAttributes.get(attributeName);
 		const where = { attribute: attributeName };
 		if (!previous) {
-			/** @type {BreakAxis[]} */
-			const breaks = [];
-			if (requiredOnInsert(current)) breaks.push('write');
-			else if (before.sealed && !current.readOnly) breaks.push('write');
-			record('attributeAdded', breaks, `${name}.${attributeName} added`, where);
+			const echoedComputed =
+				current.computed !== null && !before.sealed && !relationsBefore.has(attributeName);
+			const dropped = !current.readOnly && (before.sealed || relationsBefore.has(attributeName));
+			record(
+				'attributeAdded',
+				requiredOnInsert(current) || dropped || echoedComputed ? ['write'] : [],
+				echoedComputed
+					? `${name}.${attributeName} added as a computed attribute: ${echoed}`
+					: `${name}.${attributeName} added`,
+				where,
+			);
 			if (!oldMetadataColumns.has(attributeName)) {
 				addColumns.push({ name: attributeName, affinity: affinityOf(current.type) });
 			}
@@ -251,7 +272,7 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 			fromTypes,
 			toTypes,
 			attributeName,
-			new Set(),
+			seenTypes,
 		);
 		for (const finding of findings) {
 			/** @type {BreakAxis[]} */
@@ -268,10 +289,11 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 				where,
 			);
 		}
-		if (!previous.nullable && current.nullable) {
+		const readRelaxed = !optionalBefore.get(attributeName) && optionalAfter.get(attributeName);
+		if (readRelaxed || (!previous.nullable && current.nullable)) {
 			record(
 				'attributeBecameNullable',
-				['read'],
+				readRelaxed ? ['read'] : [],
 				`${name}.${attributeName} became nullable`,
 				where,
 			);
@@ -317,14 +339,29 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 		}
 	}
 
-	const relationsBefore = JSON.stringify(
-		[...before.relations].sort((a, b) => compareText(a.name, b.name)),
-	);
-	const relationsAfter = JSON.stringify(
-		[...after.relations].sort((a, b) => compareText(a.name, b.name)),
-	);
-	if (relationsBefore !== relationsAfter) {
-		record('relationsChanged', [], `${name} relationships changed`);
+	for (const [relationName, relation] of relationsAfter) {
+		const previous = relationsBefore.get(relationName);
+		const where = { attribute: relationName };
+		if (!previous) {
+			const echoedRelation = !before.sealed && !beforeAttributes.has(relationName);
+			record(
+				'relationAdded',
+				echoedRelation ? ['write'] : [],
+				echoedRelation
+					? `${name}.${relationName} relationship added: ${echoed}`
+					: `${name}.${relationName} relationship added`,
+				where,
+			);
+		} else if (canonicalJSON(previous) !== canonicalJSON(relation)) {
+			record('relationChanged', [], `${name}.${relationName} relationship changed`, where);
+		}
+	}
+	for (const relationName of relationsBefore.keys()) {
+		if (!relationsAfter.has(relationName)) {
+			record('relationRemoved', [], `${name}.${relationName} relationship removed`, {
+				attribute: relationName,
+			});
+		}
 	}
 
 	const extraColumn = before.storage.extraColumn === null ? after.storage.extraColumn : null;
@@ -339,10 +376,11 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
  * @param {Map<string, IRObjectType>} fromTypes
  * @param {Map<string, IRObjectType>} toTypes
  * @param {string} path
- * @param {Set<string>} visiting
+ * @param {Set<string>} seen object type pairs already compared for this table; each is reported
+ *   once, at the first path that reaches it
  * @returns {TypeFinding[]}
  */
-function compareTypes(before, after, fromTypes, toTypes, path, visiting) {
+function compareTypes(before, after, fromTypes, toTypes, path, seen) {
 	/**
 	 * @param {string} kind
 	 * @param {boolean} read
@@ -396,7 +434,7 @@ function compareTypes(before, after, fromTypes, toTypes, path, visiting) {
 				fromTypes,
 				toTypes,
 				`${path}[]`,
-				visiting,
+				seen,
 			);
 			if (!before.elementNullable && next.elementNullable) {
 				findings.push(
@@ -413,8 +451,8 @@ function compareTypes(before, after, fromTypes, toTypes, path, visiting) {
 		case 'object': {
 			const next = /** @type {typeof before} */ (after);
 			const pair = `${before.type}\u0000${next.type}`;
-			if (visiting.has(pair)) return [];
-			const inner = new Set(visiting).add(pair);
+			if (seen.has(pair)) return [];
+			seen.add(pair);
 			const beforeAttributes = new Map(
 				(fromTypes.get(before.type)?.attributes ?? []).map((a) => [a.name, a]),
 			);
@@ -444,7 +482,7 @@ function compareTypes(before, after, fromTypes, toTypes, path, visiting) {
 					continue;
 				}
 				findings.push(
-					...compareTypes(previous.type, attribute.type, fromTypes, toTypes, nestedPath, inner),
+					...compareTypes(previous.type, attribute.type, fromTypes, toTypes, nestedPath, seen),
 				);
 				if (!previous.nullable && attribute.nullable) {
 					findings.push({

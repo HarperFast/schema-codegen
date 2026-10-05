@@ -8,35 +8,35 @@
 export function createRegenerationScheduler(run, { delayMs = 100, onError }) {
 	let requested = false;
 	let closed = false;
+	let running = false;
 	/** @type {ReturnType<typeof setTimeout> | null} */
 	let timer = null;
-	/** @type {Promise<void> | null} */
-	let draining = null;
 
 	const drain = async () => {
 		timer = null;
-		while (requested && !closed) {
-			requested = false;
-			try {
-				await run();
-			} catch (error) {
-				onError(error);
+		running = true;
+		try {
+			while (requested && !closed) {
+				requested = false;
+				try {
+					await run();
+				} catch (error) {
+					onError(error);
+				}
 			}
+		} finally {
+			running = false;
 		}
-		draining = null;
 	};
 
 	return {
-		/** Requests a run; it starts after `delayMs` unless one is already pending or running. */
 		schedule() {
 			if (closed) return;
 			requested = true;
-			if (timer || draining) return;
-			timer = setTimeout(() => {
-				draining = drain();
-			}, delayMs);
+			if (timer || running) return;
+			timer = setTimeout(drain, delayMs);
 		},
-		/** Cancels pending runs; a run already in progress finishes. */
+		/** A run already in progress is not interrupted. */
 		close() {
 			closed = true;
 			if (timer) clearTimeout(timer);

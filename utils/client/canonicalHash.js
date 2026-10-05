@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Serializes a JSON-compatible value with object keys sorted at every depth, so equal values
- * always produce identical text. `undefined` object members are dropped, as `JSON.stringify` does.
+ * Object keys are sorted at every depth; `undefined` members are dropped, as `JSON.stringify` does.
  * @param {unknown} value
  * @returns {string}
  */

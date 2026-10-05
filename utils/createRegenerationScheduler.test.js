@@ -6,6 +6,7 @@ describe('createRegenerationScheduler', () => {
 		vi.useFakeTimers();
 	});
 	afterEach(() => {
+		vi.restoreAllMocks();
 		vi.useRealTimers();
 	});
 
@@ -58,6 +59,61 @@ describe('createRegenerationScheduler', () => {
 		scheduler.schedule();
 		await vi.advanceTimersByTimeAsync(10);
 		expect(run).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps serving requests after a run that throws synchronously', async () => {
+		const onError = vi.fn();
+		const run = vi
+			.fn()
+			.mockImplementationOnce(() => {
+				throw new Error('sync');
+			})
+			.mockReturnValue(undefined);
+		const scheduler = createRegenerationScheduler(run, { delayMs: 10, onError });
+		scheduler.schedule();
+		await vi.advanceTimersByTimeAsync(10);
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'sync' }));
+		scheduler.schedule();
+		await vi.advanceTimersByTimeAsync(10);
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+
+	it('folds a request made synchronously by the run into one later run, never overlapping', async () => {
+		let active = 0;
+		let maxActive = 0;
+		/** @type {ReturnType<typeof createRegenerationScheduler>} */
+		let scheduler;
+		const run = vi.fn(async () => {
+			active++;
+			maxActive = Math.max(maxActive, active);
+			if (run.mock.calls.length === 1) scheduler.schedule();
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			active--;
+		});
+		scheduler = createRegenerationScheduler(run, { delayMs: 10, onError: vi.fn() });
+		scheduler.schedule();
+		await vi.advanceTimersByTimeAsync(100);
+		expect(run).toHaveBeenCalledTimes(2);
+		expect(maxActive).toBe(1);
+	});
+
+	it('surfaces a throwing error reporter and keeps serving requests', async () => {
+		/** @type {(() => Promise<void>)[]} */
+		const timers = [];
+		vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+			/** @type {any} */ ((/** @type {() => Promise<void>} */ callback) => timers.push(callback)),
+		);
+		const run = vi.fn().mockRejectedValue(new Error('boom'));
+		const scheduler = createRegenerationScheduler(run, {
+			delayMs: 10,
+			onError: () => {
+				throw new Error('reporter');
+			},
+		});
+		scheduler.schedule();
+		await expect(timers[0]()).rejects.toThrow('reporter');
+		scheduler.schedule();
+		expect(timers).toHaveLength(2);
 	});
 
 	it('does nothing after close', async () => {

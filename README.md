@@ -189,7 +189,9 @@ How Harper types map, and why, is recorded in [docs/design/client-codegen.md](do
 Attributes are optional unless they are the primary key, server-managed (`@createdTime`,
 `@updatedTime`), or declared non-null (`String!`). Computed attributes are read-only and optional;
 relationships are not stored on the model. A table with a `Blob` attribute cannot be replaced in full
-(`encodeUpsertRow` throws), because a client has no way to send a blob back yet; use a patch.
+(`encodeUpsertRow` throws), because a client has no way to send a blob back yet; use a patch. A
+`Blob` is always optional on the model, since sync does not deliver blob content; declaring one
+required (`Blob!`) makes client inserts into its table fail, and generation warns about it.
 
 The generated Swift package needs Swift 5.9 (iOS 13, macOS 10.15); the Kotlin module targets the JVM
 and needs Android API 26 (or core library desugaring) for `java.time`. `Package.swift` and
@@ -226,8 +228,10 @@ Scoping by an attribute without `@indexed` works but logs a warning.
 The IR records a SHA-256 hash of each table's wire and storage contract, of the whole schema, and of
 the tables in each sync profile (the value a device sends when it connects). When a regeneration
 would break clients built from the previous IR — for example, a changed attribute type, a removed
-table, or a new required attribute — the component logs which changes break reads, writes or the
-device's storage. To enforce this in CI, compare two IR files with the CLI.
+table, a new required attribute, or a new computed attribute or relationship on a table that is not
+`@sealed` (older models keep it in `_extra` and send it back, which the server rejects) — the
+component logs which changes break reads, writes or the device's storage. To enforce this in CI,
+compare two IR files with the CLI; an IR file whose hashes do not match its contents is refused.
 
 ### CLI
 

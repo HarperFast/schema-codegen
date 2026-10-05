@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	coverageTables,
 	coverageTypes,
+	sharedChain,
 	spikeProfiles,
 	spikeTables,
 } from '../../test/fixtures/clientSchema.js';
@@ -352,15 +353,139 @@ describe('diffSchemaIR', () => {
 		expect(retyped.compatibility.storage).toBe('additive');
 	});
 
-	it('reports relation changes without breaking anything', () => {
-		const result = diffAfter((tables) => {
+	it('reports a removed or changed relationship without breaking anything', () => {
+		const removed = diffAfter((tables) => {
 			const purchase = find(tables, 'Purchase');
 			purchase.attributes = purchase.attributes.filter(
 				(/** @type {any} */ attribute) => attribute.name !== 'customer',
 			);
 		});
+		expect(removed.changes).toEqual([
+			expect.objectContaining({ kind: 'relationRemoved', attribute: 'customer', breaks: [] }),
+		]);
+		const changed = diffAfter((tables) => {
+			const purchases = find(tables, 'Customer').attributes.find(
+				(/** @type {any} */ attribute) => attribute.name === 'purchases',
+			);
+			purchases.relationship = { to: 'buyerId' };
+		});
+		expect(changed.changes).toEqual([
+			expect.objectContaining({ kind: 'relationChanged', attribute: 'purchases', breaks: [] }),
+		]);
+	});
+
+	it('breaks writes when an unsealed table gains a relationship or computed attribute older models would echo', () => {
+		const relation = {
+			name: 'favorite',
+			type: 'Purchase',
+			relationship: { from: 'favoriteId' },
+			relationshipReference: { database: 'coverage', table: 'Purchase' },
+		};
+		const computed = { name: 'rank', type: 'Int', computed: { from: () => 1 } };
+		const unsealed = diffAfter((tables) =>
+			find(tables, 'Customer').attributes.push(relation, computed),
+		);
+		expect(unsealed.compatibility.write).toBe('breaking');
+		expect(unsealed.changes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: 'relationAdded',
+					attribute: 'favorite',
+					breaks: ['write'],
+					message: expect.stringContaining('send it back on PUT'),
+				}),
+				expect.objectContaining({ kind: 'attributeAdded', attribute: 'rank', breaks: ['write'] }),
+			]),
+		);
+		const sealed = diffAfter((tables) =>
+			find(tables, 'Purchase').attributes.push({ ...relation, name: 'gift' }, computed),
+		);
+		expect(sealed.compatibility.write).toBe('additive');
+	});
+
+	it('breaks writes when a stored attribute becomes a relationship', () => {
+		const result = diffAfter((tables) => {
+			const product = find(tables, 'Product');
+			const category = product.attributes.find(
+				(/** @type {any} */ attribute) => attribute.name === 'category',
+			);
+			Object.assign(category, {
+				type: 'Customer',
+				indexed: undefined,
+				relationship: { from: 'id' },
+				relationshipReference: { database: 'coverage', table: 'Customer' },
+			});
+		});
 		expect(result.changes).toEqual([
-			expect.objectContaining({ kind: 'relationsChanged', breaks: [] }),
+			expect.objectContaining({
+				kind: 'attributeRemoved',
+				attribute: 'category',
+				breaks: ['write'],
+			}),
+			expect.objectContaining({ kind: 'relationAdded', attribute: 'category', breaks: [] }),
+		]);
+	});
+
+	it('breaks inserts, not reads, when a Blob becomes required', () => {
+		/** @param {any[]} tables */
+		const requireFile = (tables) => (find(tables, 'Attachment').attributes[2].nullable = false);
+		const required = diffAfter(requireFile);
+		expect(required.compatibility).toEqual({
+			read: 'additive',
+			write: 'breaking',
+			storage: 'additive',
+		});
+		expect(required.changes).toEqual([
+			expect.objectContaining({ kind: 'attributeBecameRequired', attribute: 'file' }),
+		]);
+		const relaxed = diffSchemaIR(irOf(requireFile), irOf());
+		expect(relaxed.compatibility).toEqual({
+			read: 'additive',
+			write: 'additive',
+			storage: 'additive',
+		});
+	});
+
+	it('keeps tables whose names contain dots apart', () => {
+		/** @param {string} database @param {string} name */
+		const only = (database, name) =>
+			buildSchemaIR({
+				tables: [
+					{
+						tableName: name,
+						databaseName: database,
+						primaryKey: 'id',
+						attributes: [{ name: 'id', type: 'ID', isPrimaryKey: true }],
+					},
+				],
+			});
+		const result = diffSchemaIR(only('a.b', 'c'), only('a', 'b.c'));
+		expect(result.changes.map((change) => change.kind)).toEqual(['tableAdded', 'tableRemoved']);
+	});
+
+	it('compares widely shared nested types once per table', () => {
+		/** @param {string} leafType */
+		const deep = (leafType) =>
+			buildSchemaIR({
+				tables: [
+					{
+						tableName: 'Deep',
+						primaryKey: 'id',
+						attributes: [
+							{ name: 'id', type: 'ID', isPrimaryKey: true },
+							{ name: 'root', type: 'T0' },
+						],
+					},
+				],
+				types: sharedChain(leafType),
+			});
+		const result = diffSchemaIR(deep('String'), deep('Int'));
+		expect(result.changes).toEqual([
+			expect.objectContaining({
+				kind: 'attributeTypeChanged',
+				path: `root${'.left'.repeat(39)}.leaf`,
+				breaks: ['read', 'write'],
+			}),
 		]);
 	});
 

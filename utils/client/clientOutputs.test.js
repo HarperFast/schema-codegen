@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { spikeProfiles, spikeTables } from '../../test/fixtures/clientSchema.js';
 import { buildSchemaIR } from './buildSchemaIR.js';
 import {
@@ -24,6 +24,7 @@ describe('client outputs', () => {
 		directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codegen-outputs-'));
 	});
 	afterEach(() => {
+		vi.restoreAllMocks();
 		fs.rmSync(directory, { recursive: true, force: true });
 	});
 
@@ -67,6 +68,28 @@ describe('client outputs', () => {
 		const second = publishClientOutputs(outputs);
 		expect(second).toEqual({ written: [], createdScaffolds: [] });
 		expect(fs.readFileSync(manifest, 'utf8')).toBe('// edited by the app developer\n');
+	});
+
+	it('publishes nothing when any file of the generation cannot be written', () => {
+		const outputs = renderClientOutputs(ir, options());
+		publishClientOutputs(outputs);
+		const changed = renderClientOutputs(
+			buildSchemaIR({ tables: spikeTables().slice(0, 1), generator: 'test' }),
+			options(),
+		);
+		const before = outputs.map((output) => fs.readFileSync(output.path, 'utf8'));
+		const writeFileSync = fs.writeFileSync;
+		let writes = 0;
+		vi.spyOn(fs, 'writeFileSync').mockImplementation((...args) => {
+			if (++writes === 3) {
+				throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+			}
+			return writeFileSync(...args);
+		});
+		expect(() => publishClientOutputs(changed)).toThrow(/no space left/);
+		expect(outputs.map((output) => fs.readFileSync(output.path, 'utf8'))).toEqual(before);
+		const all = /** @type {string[]} */ (fs.readdirSync(directory, { recursive: true }));
+		expect(all.filter((file) => file.endsWith('.tmp'))).toEqual([]);
 	});
 
 	it('leaves no temporary files behind', () => {

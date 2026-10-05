@@ -3,10 +3,10 @@
 import { commentLines, generatedHeader, kotlinString, readRuntimeSource } from './emitSupport.js';
 import {
 	allocateMemberNames,
+	createNameAllocator,
 	escapeKotlinEnumEntry,
 	escapeKotlinIdentifier,
 	RESERVED_MEMBER_NAMES,
-	toCodeIdentifier,
 } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
@@ -58,6 +58,7 @@ const FIELD_ENTRY_RESERVED = [
 	'attribute',
 	'Companion',
 ];
+const GENERATED_LOCALS = ['field', 'it', 'other', 'result', 'row', 'version'];
 const PACKAGE_SEGMENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FILE_SUPPRESSIONS =
 	'@file:Suppress("PropertyName", "ObjectPropertyName", "ConstructorParameterNaming", "EnumEntryName", "ClassName", "RedundantVisibilityModifier", "RemoveRedundantQualifierName", "unused")\n';
@@ -66,6 +67,8 @@ const FILE_SUPPRESSIONS =
  * @typedef {Object} KotlinContext
  * @property {Map<string, IRObjectType>} typesByName
  * @property {Map<string, IRTable>} tablesByKey
+ * @property {Map<string, string>} converters list converter expression → the file-level value holding it
+ * @property {ReturnType<typeof createNameAllocator>} converterNames
  */
 
 /**
@@ -84,6 +87,8 @@ export function emitKotlinModule(ir, { packageName = 'harper.models' } = {}) {
 	const context = {
 		typesByName: new Map(ir.types.map((type) => [type.name, type])),
 		tablesByKey: new Map(ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table])),
+		converters: new Map(),
+		converterNames: createNameAllocator(fileScopeNames(ir)),
 	};
 	const packageLine = `package ${segments.map(escapeKotlinIdentifier).join('.')}\n`;
 	const header = generatedHeader(ir) + FILE_SUPPRESSIONS + '\n';
@@ -140,22 +145,79 @@ function kotlinType(type, context) {
 }
 
 /**
+ * Every name a member, class or local of Models.kt can take, so a file-level converter value is
+ * never shadowed where it is used.
+ * @param {SchemaIR} ir
+ * @returns {Set<string>}
+ */
+function fileScopeNames(ir) {
+	const names = new Set([...RESERVED_MEMBER_NAMES, ...GENERATED_LOCALS]);
+	for (const owner of [...ir.tables, ...ir.types]) {
+		names.add(owner.typeName);
+		const members = allocateMemberNames(
+			owner.attributes.map((attribute) => attribute.name),
+			RESERVED_MEMBER_NAMES,
+		);
+		for (const member of members.values()) names.add(member);
+	}
+	return names;
+}
+
+/**
  * @param {IRType} type
  * @param {KotlinContext} context
  * @returns {string}
  */
-function converterOf(type, context) {
+function converterExpression(type, context) {
 	switch (type.kind) {
 		case 'scalar':
 			return `HarperConverters.${SCALAR_CONVERTERS[type.scalar]}`;
 		case 'array': {
-			const element = converterOf(type.element, context);
+			const element = converterExpression(type.element, context);
 			return `HarperConverters.list(${type.elementNullable ? `HarperConverters.nullable(${element})` : element})`;
 		}
 		case 'object':
 		case 'record':
 			return kotlinType(type, context);
 	}
+}
+
+/**
+ * @param {IRType} type
+ * @param {KotlinContext} context
+ * @returns {string}
+ */
+function converterStem(type, context) {
+	switch (type.kind) {
+		case 'scalar':
+			return SCALAR_CONVERTERS[type.scalar];
+		case 'array': {
+			const element = converterStem(type.element, context);
+			return `${type.elementNullable ? `nullable${element[0].toUpperCase()}${element.slice(1)}` : element}List`;
+		}
+		case 'object':
+		case 'record': {
+			const name = kotlinType(type, context);
+			return `${name[0].toLowerCase()}${name.slice(1)}`;
+		}
+	}
+}
+
+/**
+ * List converters are built once, as file-level values, rather than on every decode and encode.
+ * @param {IRType} type
+ * @param {KotlinContext} context
+ * @returns {string}
+ */
+function converterOf(type, context) {
+	const expression = converterExpression(type, context);
+	if (type.kind !== 'array') return expression;
+	let name = context.converters.get(expression);
+	if (name === undefined) {
+		name = context.converterNames.claim(`${converterStem(type, context)}Converter`);
+		context.converters.set(expression, name);
+	}
+	return name;
 }
 
 /**
@@ -285,10 +347,13 @@ function modelsSource(ir, context) {
 	const imports = ['kotlin.reflect.KClass'];
 	if (/\bBigInteger\b/.test(body)) imports.push('java.math.BigInteger');
 	if (/\bInstant\b/.test(body)) imports.push('java.time.Instant');
+	const converters = [...context.converters]
+		.map(([expression, name]) => `private val ${name} = ${expression}\n`)
+		.join('');
 	return `\n${imports
 		.sort()
 		.map((name) => `import ${name}\n`)
-		.join('')}\n${body}`;
+		.join('')}\n${converters ? `${converters}\n` : ''}${body}`;
 }
 
 /**
@@ -306,8 +371,13 @@ function tableModel(table, context) {
 	const attributesByName = new Map(
 		table.attributes.map((attribute) => [attribute.name, attribute]),
 	);
-	const record = table.attributes.map((attribute) =>
-		propertyOf(attribute, identifierOf(attribute.name), context, attribute.nullable),
+	const record = table.projections.record.map((field) =>
+		propertyOf(
+			/** @type {IRAttribute} */ (attributesByName.get(field.name)),
+			identifierOf(field.name),
+			context,
+			field.optional,
+		),
 	);
 	const recordByName = new Map(record.map((property) => [property.raw, property]));
 	const declared = [
@@ -550,13 +620,14 @@ function tableSchemaLiteral(table) {
 	const attributesByName = new Map(
 		table.attributes.map((attribute) => [attribute.name, attribute]),
 	);
+	const optional = new Map(table.projections.record.map((field) => [field.name, field.optional]));
 	const columns = table.storage.columns.map((column) => {
 		const attribute = /** @type {IRAttribute} */ (attributesByName.get(column.name));
 		const parts = [
 			kotlinString(column.name),
 			`HarperColumnType.${columnType(attribute.type)}`,
 			`HarperAffinity.${column.affinity}`,
-			`nullable = ${attribute.nullable}`,
+			`nullable = ${optional.get(column.name)}`,
 		];
 		if (attribute.primaryKey) parts.push('primaryKey = true');
 		if (attribute.indexed) parts.push('indexed = true');
@@ -584,13 +655,11 @@ function tableSchemaLiteral(table) {
  */
 function schemaSource(ir) {
 	const profileNames = allocateMemberNames(
-		ir.profiles.map((profile) => toCodeIdentifier(profile.name)),
+		ir.profiles.map((profile) => profile.name),
 		[],
 	);
 	const constantOf = (/** @type {IRProfile} */ profile) =>
-		escapeKotlinIdentifier(
-			/** @type {string} */ (profileNames.get(toCodeIdentifier(profile.name))),
-		);
+		escapeKotlinIdentifier(/** @type {string} */ (profileNames.get(profile.name)));
 	const tablesByKey = new Map(
 		ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table]),
 	);

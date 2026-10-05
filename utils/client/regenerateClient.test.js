@@ -37,6 +37,15 @@ describe('regenerateClient', () => {
 	});
 	const warnings = () => logger.warn.mock.calls.map((call) => String(call[0]));
 
+	it('publishes nothing once its signal is aborted', async () => {
+		fs.writeFileSync(path.join(directory, 'sync.yaml'), 'profiles: {}\n');
+		const closing = new AbortController();
+		const run = regenerateClient(spikeTables(), options({ signal: closing.signal }));
+		closing.abort();
+		expect(await run).toBeUndefined();
+		expect(fs.readdirSync(directory)).toEqual(['sync.yaml']);
+	});
+
 	it('writes the IR, Swift and Kotlin from the app directory, with profiles from sync.yaml', async () => {
 		fs.writeFileSync(
 			path.join(directory, 'sync.yaml'),

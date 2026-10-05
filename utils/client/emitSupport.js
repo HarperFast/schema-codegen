@@ -14,10 +14,12 @@ export function generatedHeader(ir) {
 
 /**
  * @param {string} fileName a file in ./runtime
- * @returns {string}
+ * @returns {string} with LF line endings, whatever the checkout used, so output is identical on every platform
  */
 export function readRuntimeSource(fileName) {
-	return fs.readFileSync(new URL(`./runtime/${fileName}`, import.meta.url), 'utf8');
+	return fs
+		.readFileSync(new URL(`./runtime/${fileName}`, import.meta.url), 'utf8')
+		.replace(/\r\n/g, '\n');
 }
 
 /**

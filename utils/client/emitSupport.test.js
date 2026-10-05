@@ -1,7 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coverageTables, coverageTypes } from '../../test/fixtures/clientSchema.js';
 import { buildSchemaIR } from './buildSchemaIR.js';
-import { commentLines, kotlinString, recursiveValueEdges, swiftString } from './emitSupport.js';
+import {
+	commentLines,
+	kotlinString,
+	readRuntimeSource,
+	recursiveValueEdges,
+	swiftString,
+} from './emitSupport.js';
+
+describe('readRuntimeSource', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('returns LF line endings from a CRLF checkout', () => {
+		vi.spyOn(fs, 'readFileSync').mockReturnValue('package harper.models\r\n\r\nobject X\r\n');
+		expect(readRuntimeSource('HarperRuntime.kt')).toBe('package harper.models\n\nobject X\n');
+	});
+});
 
 describe('swiftString', () => {
 	it('escapes quotes, backslashes and control characters', () => {

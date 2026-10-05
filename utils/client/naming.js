@@ -275,14 +275,24 @@ export const RESERVED_MEMBER_NAMES = [
 ];
 
 /**
- * The names no member generated for `ir` may take: the reserved members, plus every runtime and
- * generated type, which member bodies refer to by name and a same-named member would shadow.
+ * The names no member of the type `ownerTypeName` may take: the reserved members, plus the
+ * runtime types and the owner itself, which its member bodies refer to by name and a same-named
+ * member would shadow. Other generated types are never named there, so adding a table never
+ * renames an existing member.
+ * @param {string} ownerTypeName
+ * @returns {string[]}
+ */
+export function reservedMemberNames(ownerTypeName) {
+	return [...RESERVED_MEMBER_NAMES, ...RUNTIME_TYPE_NAMES, ownerTypeName];
+}
+
+/**
+ * The names no profile constant may take: profile initializers name every table they cover.
  * @param {{ tables: { typeName: string }[], types: { typeName: string }[] }} ir
  * @returns {string[]}
  */
-export function reservedMemberNames(ir) {
+export function reservedProfileNames(ir) {
 	return [
-		...RESERVED_MEMBER_NAMES,
 		...RUNTIME_TYPE_NAMES,
 		...ir.tables.map((table) => table.typeName),
 		...ir.types.map((type) => type.typeName),

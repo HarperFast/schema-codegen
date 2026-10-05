@@ -115,6 +115,36 @@ describe('client outputs', () => {
 		expect(all.filter((file) => file.endsWith('.tmp'))).toEqual([]);
 	});
 
+	it('restores the file whose in-place fallback failed part-way', () => {
+		const outputs = renderClientOutputs(ir, options());
+		publishClientOutputs(outputs);
+		const before = outputs.map((output) => fs.readFileSync(output.path, 'utf8'));
+		const changed = renderClientOutputs(
+			buildSchemaIR({ tables: spikeTables().slice(0, 1), generator: 'test' }),
+			options(),
+		);
+		const renameSync = fs.renameSync;
+		const writeFileSync = fs.writeFileSync;
+		let renames = 0;
+		vi.spyOn(fs, 'renameSync').mockImplementation((...args) => {
+			if (++renames === 2) {
+				throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+			}
+			return renameSync(...args);
+		});
+		vi.spyOn(fs, 'writeFileSync').mockImplementation((file, content, ...rest) => {
+			if (renames === 2 && !String(file).endsWith('.tmp')) {
+				writeFileSync(file, String(content).slice(0, 10));
+				vi.mocked(fs.writeFileSync).mockRestore();
+				throw Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
+			}
+			return writeFileSync(file, content, ...rest);
+		});
+		expect(() => publishClientOutputs(changed)).toThrow(/no space left/);
+		vi.restoreAllMocks();
+		expect(outputs.map((output) => fs.readFileSync(output.path, 'utf8'))).toEqual(before);
+	});
+
 	it('skips build folders and unreadable files when looking for stale sources', () => {
 		const outputs = renderClientOutputs(ir, options());
 		publishClientOutputs(outputs);
@@ -127,6 +157,13 @@ describe('client outputs', () => {
 			fs.writeFileSync(path.join(packageDirectory, folder, 'Copied.swift'), runtime);
 		}
 		expect(findStaleGeneratedFiles(packageDirectory, outputs)).toEqual([]);
+		const nestedBuild = path.join(packageDirectory, 'Sources', 'build');
+		fs.mkdirSync(nestedBuild);
+		fs.writeFileSync(path.join(nestedBuild, 'Renamed.swift'), runtime);
+		expect(findStaleGeneratedFiles(packageDirectory, outputs)).toEqual([
+			path.join(nestedBuild, 'Renamed.swift'),
+		]);
+		fs.rmSync(nestedBuild, { recursive: true });
 		fs.writeFileSync(path.join(packageDirectory, 'Sources', 'Locked.swift'), runtime);
 		vi.spyOn(fs, 'openSync').mockImplementation(() => {
 			throw Object.assign(new Error('permission denied'), { code: 'EACCES' });

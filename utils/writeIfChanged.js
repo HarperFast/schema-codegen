@@ -108,5 +108,7 @@ function resolveTarget(filePath) {
 		}
 		target = path.resolve(path.dirname(target), link);
 	}
-	return target;
+	throw Object.assign(new Error(`too many levels of symbolic links: ${filePath}`), {
+		code: 'ELOOP',
+	});
 }

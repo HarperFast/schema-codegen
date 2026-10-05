@@ -487,6 +487,17 @@ describe('diffSchemaIR', () => {
 			['Customer', 'attributeAdded'],
 			['Snapshot', 'contractChanged'],
 		]);
+		const required = diffSchemaIR(
+			irOf((tables) => tables.push({ ...snapshot })),
+			irOf((tables) => {
+				tables.push({ ...snapshot });
+				find(tables, 'Customer').attributes.push({ name: 'tier', type: 'String', nullable: false });
+			}),
+		);
+		expect(required.changes.find((change) => change.table === 'Snapshot')).toMatchObject({
+			kind: 'contractChanged',
+			breaks: ['write'],
+		});
 	});
 
 	it('keeps tables whose names contain dots apart', () => {

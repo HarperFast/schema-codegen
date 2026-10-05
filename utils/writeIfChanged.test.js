@@ -61,6 +61,17 @@ describe('writeIfChanged', () => {
 		},
 	);
 
+	it.skipIf(process.platform === 'win32')('refuses a symlink cycle', () => {
+		const first = path.join(directory, 'a.ts');
+		const second = path.join(directory, 'b.ts');
+		fs.symlinkSync(second, first);
+		fs.symlinkSync(first, second);
+		expect(() => writeFileAtomic(first, 'next')).toThrow(
+			expect.objectContaining({ code: 'ELOOP' }),
+		);
+		expect(fs.lstatSync(first).isSymbolicLink()).toBe(true);
+	});
+
 	it('overwrites in place when the target is locked against renames', () => {
 		const file = path.join(directory, 'types.ts');
 		fs.writeFileSync(file, 'previous');

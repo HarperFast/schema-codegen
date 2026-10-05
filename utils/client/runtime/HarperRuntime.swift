@@ -291,8 +291,10 @@ extension Date: HarperValueConvertible {
 	public init(harperValue: HarperValue) throws {
 		switch harperValue {
 		case .double(let milliseconds):
+			guard milliseconds >= -8.64e15, milliseconds <= 8.64e15 else { throw HarperValueMismatch(expected: "date", actual: "out-of-range date") }
 			self = Date(timeIntervalSince1970: milliseconds / 1000)
 		case .int(let milliseconds):
+			guard milliseconds >= -8_640_000_000_000_000, milliseconds <= 8_640_000_000_000_000 else { throw HarperValueMismatch(expected: "date", actual: "out-of-range date") }
 			self = Date(timeIntervalSince1970: Double(milliseconds) / 1000)
 		case .string(let text):
 			let formatter = ISO8601DateFormatter()

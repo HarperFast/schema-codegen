@@ -45,6 +45,9 @@ fun main() {
 	expectThrows<HarperDecodingError.TypeMismatch>("a mismatched type", { it.attribute == "price" && it.expected == "double" && it.actual == "string" }) {
 		Product.decode(row("id" to "p1", "price" to "cheap"))
 	}
+	expectThrows<HarperDecodingError.TypeMismatch>("a date that is not a number", { it.attribute == "createdAt" && it.expected == "date" && it.actual == "out-of-range date" }) {
+		coverage_Customer.decode(row("id" to "c1", "name" to "Ada", "createdAt" to Double.NaN, "updatedAt" to 0.0))
+	}
 	expectThrows<HarperDecodingError.TypeMismatch>("a Long at 2^63", { it.attribute == "visits" && it.expected == "int" && it.actual == "double" }) {
 		coverage_Customer.decode(row("id" to "c1", "name" to "Ada", "createdAt" to 0.0, "updatedAt" to 0.0, "visits" to 9.223372036854775808E18))
 	}

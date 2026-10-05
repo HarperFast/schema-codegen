@@ -279,10 +279,12 @@ Per table (Swift `struct` / Kotlin `data class`), named `typeName`:
 - property names: attribute names that are already identifiers are kept verbatim (claimed first);
   others are sanitized like table names; keywords are escaped with backticks; names that collide
   with the generated members (`_version`, `_extra`, `New`, `Patch`, `Field`, `clear`,
-  `encodeRow`, `encodeUpsertRow`, `harperValue`, `hashValue`, `Companion`), with a runtime or
-  generated type name (member bodies name those types, and a same-named member would shadow
-  them), or with each other get a numeric suffix, rechecked against every claimed name. The raw
-  attribute name is always what goes on the row;
+  `encodeRow`, `encodeUpsertRow`, `harperValue`, `hashValue`, `Companion`), with a runtime type or
+  the owning type's own name (member bodies name those, and a same-named member would shadow
+  them), or with each other get a numeric suffix, rechecked against every claimed name. Other
+  generated types are never named inside member bodies (Kotlin reaches their converters through
+  file-level values), so adding a table never renames an existing property. The raw attribute
+  name is always what goes on the row;
 - nested object types get the same treatment minus `_version`, `New` and `Patch`, and always keep
   `_extra` (nested sealing is not enforced server-side). A nested type reachable from itself by
   value (not through an array) cannot be a Swift struct; that edge is boxed in Swift as
@@ -372,24 +374,25 @@ limit left on; it is loaded only when `syncProfiles` is configured.
   old client can apply without regenerating: new tables' storage descriptors, added columns,
   changed computed expressions (recompute pass, issue #18 finding).
 
-| Change (to a table unless noted)                                                                                           | read         | write                                                                        | storage                                  |
-| -------------------------------------------------------------------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------- | ---------------------------------------- |
-| table added                                                                                                                | —            | —                                                                            | — (new table)                            |
-| table removed; PK changed; attribute type changed                                                                          | breaking     | breaking                                                                     | breaking                                 |
-| nullable attribute added, table not sealed; index changed                                                                  | —            | —                                                                            | — (add column)                           |
-| attribute added to a `@sealed` table                                                                                       | —            | breaking (old model drops it on `PUT`)                                       | —                                        |
-| required (`!`) attribute added                                                                                             | —            | breaking (old inserts omit it)                                               | —                                        |
-| attribute removed that the old model required on read                                                                      | breaking     | —                                                                            | —                                        |
-| attribute removed from a `@sealed` table                                                                                   | —            | breaking (old writes send it)                                                | —                                        |
-| attribute became nullable where the old model required it                                                                  | breaking     | —                                                                            | —                                        |
-| attribute became required on insert, or writable became read-only                                                          | —            | breaking                                                                     | —                                        |
-| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]`                                                                       | breaking / — | — / breaking                                                                 | —                                        |
-| computed expression/version changed                                                                                        | —            | —                                                                            | — (recompute)                            |
-| computed attribute or relationship added, table not sealed                                                                 | —            | breaking (old model echoes it from `_extra` on `PUT`; `validate` rejects it) | — (add column)                           |
-| stored attribute turned into a relationship                                                                                | —            | breaking (old writes send it)                                                | —                                        |
-| `sealed` changed                                                                                                           | —            | breaking                                                                     | — (an orphaned `_extra` column is inert) |
-| version/extra column relocated (attribute named `_version`/`_extra` added)                                                 | —            | —                                                                            | breaking                                 |
-| nested object type: same rules, never sealed; each type pair is compared once per table, at the first path that reaches it |              |                                                                              |                                          |
+| Change (to a table unless noted)                                                                                           | read                            | write                                                                        | storage                                  |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| table added                                                                                                                | —                               | —                                                                            | — (new table)                            |
+| table removed; PK changed; attribute type changed                                                                          | breaking                        | breaking                                                                     | breaking                                 |
+| nullable attribute added, table not sealed; index changed                                                                  | —                               | —                                                                            | — (add column)                           |
+| attribute added to a `@sealed` table                                                                                       | —                               | breaking (old model drops it on `PUT`)                                       | —                                        |
+| required (`!`) attribute added                                                                                             | —                               | breaking (old inserts omit it)                                               | —                                        |
+| attribute removed that the old model required on read                                                                      | breaking                        | —                                                                            | —                                        |
+| attribute removed from a `@sealed` table                                                                                   | —                               | breaking (old writes send it)                                                | —                                        |
+| attribute became nullable where the old model required it                                                                  | breaking                        | —                                                                            | —                                        |
+| attribute became required on insert, or writable became read-only                                                          | —                               | breaking                                                                     | —                                        |
+| element nullability: `[T!]` → `[T]` / `[T]` → `[T!]`                                                                       | breaking / —                    | — / breaking                                                                 | —                                        |
+| computed expression/version changed                                                                                        | —                               | —                                                                            | — (recompute)                            |
+| computed attribute or relationship added, table not sealed                                                                 | —                               | breaking (old model echoes it from `_extra` on `PUT`; `validate` rejects it) | — (add column)                           |
+| stored attribute turned into a relationship                                                                                | —                               | breaking (old writes send it)                                                | —                                        |
+| `sealed` changed                                                                                                           | —                               | breaking                                                                     | — (an orphaned `_extra` column is inert) |
+| version/extra column relocated (attribute named `_version`/`_extra` added)                                                 | —                               | —                                                                            | breaking                                 |
+| nested object type: same rules, never sealed; each type pair is compared once per table, at the first path that reaches it |                                 |                                                                              |                                          |
+| contract changed only through an embedded table                                                                            | the embedded table's read break | the embedded table's write break                                             | —                                        |
 
 The gateway (#10) chooses by profile direction: `pull` checks `read`, `push` checks `write`,
 `bidirectional` both; `storage` always forces a resync. With no consumer for the hello negotiation

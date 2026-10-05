@@ -80,7 +80,7 @@ describe('emitKotlinModule', () => {
 			'public val visits: Long? = null',
 			'public val createdAt: Instant,',
 			'scores = row.harperOptional("scores", "coverage_Customer", nullableIntListConverter),',
-			'address = row.harperOptional("address", "coverage_Customer", Address),',
+			'address = row.harperOptional("address", "coverage_Customer", addressConverter),',
 		]) {
 			expect(customer).toContain(declaration);
 		}
@@ -88,11 +88,12 @@ describe('emitKotlinModule', () => {
 		expect(models).toContain('import java.time.Instant\n');
 	});
 
-	it('keeps members from shadowing the runtime and generated types their bodies name', () => {
+	it('keeps members from shadowing the runtime types their bodies name, without renaming them for unrelated tables', () => {
 		const weird = dataClass('Weird');
 		expect(weird).toContain('public val HarperConverters_2: List<String?>? = null,');
-		expect(weird).toContain('public val Address_2: Address? = null,');
-		expect(weird).toContain('put("Address", Address.encode(it))');
+		expect(weird).toContain('public val Address: Address? = null,');
+		expect(weird).toContain('put("Address", addressConverter.encode(it))');
+		expect(models).toContain('private val addressConverter = Address\n');
 		expect(models).toContain('public data class ModelsKtRecord(');
 	});
 

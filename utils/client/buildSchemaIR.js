@@ -131,11 +131,14 @@ export function buildSchemaIR({ tables: sourceTables, types, syncProfiles, previ
 	allocateTypeNames(tables, typeList, previous);
 
 	for (const table of tables) {
-		table.hash = hashCanonical({ irVersion: IR_VERSION, table: tableContract(table, objectTypes) });
+		table.hash = hashCanonical({
+			irVersion: IR_VERSION,
+			table: tableContract(table, { objectTypes, tablesByKey }),
+		});
 	}
 	const schemaHash = hashCanonical({
 		irVersion: IR_VERSION,
-		tables: tables.map((table) => tableContract(table, objectTypes)),
+		tables: tables.map((table) => tableContract(table, { objectTypes, tablesByKey })),
 	});
 
 	/** @type {IRProfile[]} */
@@ -549,13 +552,19 @@ function allocateTypeNames(tables, types, previous) {
 }
 
 /**
+ * @typedef {{ objectTypes: Map<string, IRObjectType>, tablesByKey: Map<string, IRTable> }} ContractContext
+ */
+
+/**
  * The part of a table that determines what a device stores and sends; its hash is the table's
- * wire/storage identity.
+ * wire/storage identity. Nested object types and embedded table shapes are inlined, so a change
+ * to either changes the hash of every table that carries it.
  * @param {IRTable} table
- * @param {Map<string, IRObjectType>} objectTypes
+ * @param {ContractContext} context
  * @returns {object}
  */
-function tableContract(table, objectTypes) {
+function tableContract(table, context) {
+	const visiting = new Set([`r:${tableKey(table.database, table.name)}`]);
 	return {
 		database: table.database,
 		name: table.name,
@@ -567,7 +576,7 @@ function tableContract(table, objectTypes) {
 			.sort((a, b) => compareText(a.name, b.name))
 			.map((attribute) => ({
 				name: attribute.name,
-				type: contractType(attribute.type, objectTypes, new Set()),
+				type: contractType(attribute.type, context, visiting),
 				nullable: attribute.nullable,
 				primaryKey: attribute.primaryKey,
 				indexed: attribute.indexed,
@@ -588,36 +597,55 @@ function tableContract(table, objectTypes) {
 
 /**
  * @param {IRType} type
- * @param {Map<string, IRObjectType>} objectTypes
+ * @param {ContractContext} context
  * @param {Set<string>} visiting
  * @returns {object}
  */
-function contractType(type, objectTypes, visiting) {
+function contractType(type, context, visiting) {
 	switch (type.kind) {
 		case 'scalar':
-		case 'record':
 			return type;
 		case 'array':
 			return {
 				kind: 'array',
-				element: contractType(type.element, objectTypes, visiting),
+				element: contractType(type.element, context, visiting),
 				elementNullable: type.elementNullable,
 			};
 		case 'object': {
-			if (visiting.has(type.type)) return { kind: 'object', type: type.type, cycle: true };
-			const inner = new Set(visiting).add(type.type);
-			const attributes = objectTypes.get(type.type)?.attributes ?? [];
+			const key = `o:${type.type}`;
+			if (visiting.has(key)) return { kind: 'object', type: type.type, cycle: true };
+			const attributes = context.objectTypes.get(type.type)?.attributes ?? [];
 			return {
 				kind: 'object',
 				type: type.type,
-				attributes: [...attributes]
-					.sort((a, b) => compareText(a.name, b.name))
-					.map((attribute) => ({
-						name: attribute.name,
-						type: contractType(attribute.type, objectTypes, inner),
-						nullable: attribute.nullable,
-					})),
+				attributes: nestedContract(attributes, context, new Set(visiting).add(key)),
+			};
+		}
+		case 'record': {
+			const key = `r:${tableKey(type.database, type.table)}`;
+			if (visiting.has(key)) return { ...type, cycle: true };
+			const attributes =
+				context.tablesByKey.get(tableKey(type.database, type.table))?.attributes ?? [];
+			return {
+				...type,
+				attributes: nestedContract(attributes, context, new Set(visiting).add(key)),
 			};
 		}
 	}
+}
+
+/**
+ * @param {(IRAttribute | IRNestedAttribute)[]} attributes
+ * @param {ContractContext} context
+ * @param {Set<string>} visiting
+ * @returns {object[]}
+ */
+function nestedContract(attributes, context, visiting) {
+	return [...attributes]
+		.sort((a, b) => compareText(a.name, b.name))
+		.map((attribute) => ({
+			name: attribute.name,
+			type: contractType(attribute.type, context, visiting),
+			nullable: attribute.nullable,
+		}));
 }

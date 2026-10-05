@@ -569,6 +569,30 @@ describe('contract hashes', () => {
 		);
 	});
 
+	it('change when an embedded table changes, and survive a table that embeds itself', () => {
+		const snapshot = () => ({
+			tableName: 'Snapshot',
+			primaryKey: 'id',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'buyer', type: 'Customer' },
+			],
+		});
+		const original = buildSchemaIR({
+			tables: [...coverageTables(), snapshot()],
+			types: coverageTypes(),
+		});
+		const changedTables = coverageTables();
+		changedTables[0].attributes.push({ name: 'nickname', type: 'String' });
+		changedTables[0].attributes.push({ name: 'referrer', type: 'Customer' });
+		const changed = buildSchemaIR({
+			tables: [...changedTables, snapshot()],
+			types: coverageTypes(),
+		});
+		expect(table(changed, 'Snapshot').hash).not.toBe(table(original, 'Snapshot').hash);
+		expect(table(changed, 'Purchase').hash).toBe(table(original, 'Purchase').hash);
+	});
+
 	it('change when a nested type changes', () => {
 		const types = coverageTypes();
 		/** @type {any} */ (types.get('Geo')).attributes.push({ name: 'alt', type: 'Float' });

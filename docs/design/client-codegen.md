@@ -179,13 +179,15 @@ timestamps):
   it is the primary key, server-managed, or `nullable === false` (the existing `isNullable`
   rule plus the server-managed exemption defineTable makes). Computed attributes are always
   optional (an on-device materialization may not have run, issue #18). Array elements follow the
-  same rule: `[String]` has nullable elements, `[String!]` does not. A `Blob` is optional on read
-  whatever its declaration, because sync does not deliver blob content; that read rule lives in
-  the `record` projection, while the attribute's `nullable` keeps what the server enforces, so a
-  `Blob` → `Blob!` change still changes the contract and breaks inserts (which never carry a blob;
-  a required Blob also raises a `BLOB_REQUIRED` warning).
-- **Projections** are the defineTable rules over stored attributes, plus one client rule: `Blob`
-  attributes are excluded from every write projection and make `upsert` `null`, because the
+  same rule: `[String]` has nullable elements, `[String!]` does not. Anything holding a `Blob` is
+  optional on read whatever its declaration, because sync does not deliver blob content: a
+  table attribute whose type contains a Blob at any depth (through the `record` projection, while
+  the attribute's `nullable` keeps what the server enforces, so `Blob` → `Blob!` still changes
+  the contract and breaks inserts, and a required Blob raises a `BLOB_REQUIRED` warning), and a
+  nested attribute or array element that is a Blob or an array of them.
+- **Projections** are the defineTable rules over stored attributes, plus one client rule:
+  writable Blob-bearing attributes are excluded from every write projection and make `upsert` `null`
+  (a computed Blob is never written anyway), because the
   transport has no blob contract yet and a full replacement would either delete the blob
   (omitted) or be rejected by `validate` (a placeholder object). `record` = all stored attributes;
   `insert` = writable attributes, PK optional; `upsert` = writable, PK required; `patch` =
@@ -392,7 +394,7 @@ limit left on; it is loaded only when `syncProfiles` is configured.
 | `sealed` changed                                                                                                           | —                               | breaking                                                                     | — (an orphaned `_extra` column is inert) |
 | version/extra column relocated (attribute named `_version`/`_extra` added)                                                 | —                               | —                                                                            | breaking                                 |
 | nested object type: same rules, never sealed; each type pair is compared once per table, at the first path that reaches it |                                 |                                                                              |                                          |
-| contract changed only through an embedded table                                                                            | the embedded table's read break | the embedded table's write break                                             | —                                        |
+| an embedded table's change (reported for each table embedding it, beside its own changes)                                  | the embedded table's read break | the embedded table's write break                                             | —                                        |
 
 The gateway (#10) chooses by profile direction: `pull` checks `read`, `push` checks `write`,
 `bidirectional` both; `storage` always forces a resync. With no consumer for the hello negotiation

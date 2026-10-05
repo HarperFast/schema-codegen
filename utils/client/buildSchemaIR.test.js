@@ -221,6 +221,54 @@ describe('buildSchemaIR', () => {
 			expect(attachment.projections.insert.map((field) => field.name)).toEqual(['id', 'label']);
 			expect(attachment.projections.patch.map((field) => field.name)).toEqual(['label']);
 		});
+
+		it('reads every value holding a Blob as optional, at any depth', () => {
+			const types = new Map([
+				['Scan', { attributes: [{ name: 'image', type: 'Blob', nullable: false }] }],
+			]);
+			const media = build(
+				[
+					{
+						tableName: 'Media',
+						primaryKey: 'id',
+						attributes: [
+							{ name: 'id', type: 'ID', isPrimaryKey: true },
+							{
+								name: 'pages',
+								type: 'array',
+								nullable: false,
+								elements: { type: 'Blob', nullable: false },
+							},
+							{ name: 'scan', type: 'Scan', nullable: false },
+						],
+					},
+				],
+				{ types },
+			);
+			const projected = table(media, 'Media').projections.record;
+			expect(projected).toContainEqual({ name: 'pages', optional: true });
+			expect(projected).toContainEqual({ name: 'scan', optional: true });
+			expect(attribute(table(media, 'Media'), 'pages').type).toMatchObject({
+				elementNullable: true,
+			});
+			expect(media.types.find((type) => type.name === 'Scan')?.attributes[0].nullable).toBe(true);
+		});
+
+		it('still allows full replacement when the only Blob is computed', () => {
+			const rendered = build([
+				{
+					tableName: 'Thumbnails',
+					primaryKey: 'id',
+					attributes: [
+						{ name: 'id', type: 'ID', isPrimaryKey: true },
+						{ name: 'preview', type: 'Blob', computed: { from: () => null } },
+					],
+				},
+			]);
+			const thumbnails = table(rendered, 'Thumbnails');
+			expect(thumbnails.projections.unwritable).toEqual([]);
+			expect(thumbnails.projections.upsert).toEqual([{ name: 'id', optional: false }]);
+		});
 	});
 
 	describe('nested types and relations', () => {
@@ -334,6 +382,35 @@ describe('buildSchemaIR', () => {
 			expect(unknown.diagnostics).toEqual([
 				expect.objectContaining({ level: 'warning', code: 'TYPE_UNRESOLVED', attribute: 'shape' }),
 			]);
+		});
+
+		it('warns when an embedded table is not generated and falls back to a nested type', () => {
+			const types = new Map([
+				[
+					'Account',
+					{ table: 'Account', database: 'billing', attributes: [{ name: 'id', type: 'ID' }] },
+				],
+			]);
+			const partial = build(
+				[
+					{
+						tableName: 'Invoice',
+						primaryKey: 'id',
+						attributes: [
+							{ name: 'id', type: 'ID', isPrimaryKey: true },
+							{ name: 'account', type: 'Account' },
+						],
+					},
+				],
+				{ types },
+			);
+			expect(attribute(table(partial, 'Invoice'), 'account').type).toEqual({
+				kind: 'object',
+				type: 'Account',
+			});
+			expect(partial.diagnostics).toContainEqual(
+				expect.objectContaining({ code: 'TABLE_NOT_GENERATED', attribute: 'account' }),
+			);
 		});
 
 		it('uses inline nested properties when there is no type registry', () => {

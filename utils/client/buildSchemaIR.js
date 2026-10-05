@@ -108,10 +108,11 @@ export function buildSchemaIR({ tables: sourceTables, types, syncProfiles, previ
 		const attributes = [];
 		for (const source of pending.attributes) {
 			if (!source?.name || source.relationship) continue;
+			const type = toType(source, context, { table: name, attribute: source.name });
 			attributes.push({
 				name: source.name,
-				type: toType(source, context, { table: name, attribute: source.name }),
-				nullable: source.nullable !== false,
+				type,
+				nullable: source.nullable !== false || holdsBlob(type),
 				...(source.description ? { description: String(source.description) } : {}),
 			});
 		}
@@ -291,6 +292,17 @@ function metadataColumn(base, attributeNames) {
 }
 
 /**
+ * A Blob, or an array of them. Sync does not deliver blob content, so such a value is optional on
+ * read wherever it appears.
+ * @param {IRType} type
+ * @returns {boolean}
+ */
+function holdsBlob(type) {
+	if (type.kind === 'array') return holdsBlob(type.element);
+	return type.kind === 'scalar' && type.scalar === 'Blob';
+}
+
+/**
  * Whether the server rejects an insert that omits the attribute.
  * @param {IRAttribute} attribute
  * @returns {boolean}
@@ -318,10 +330,11 @@ function toType(source, context, where) {
 	const type = source?.type;
 	if (type === 'array' || type === 'Array') {
 		const elements = source.elements;
+		const element = elements ? toType(elements, context, where) : ANY_TYPE;
 		return {
 			kind: 'array',
-			element: elements ? toType(elements, context, where) : ANY_TYPE,
-			elementNullable: elements?.nullable !== false,
+			element,
+			elementNullable: elements?.nullable !== false || holdsBlob(element),
 		};
 	}
 	if (type === undefined || type === null || type === '' || type === 'object' || type === 'Object')
@@ -334,6 +347,12 @@ function toType(source, context, where) {
 		if (context.tableKeys.has(tableKey(database, typeDef.table))) {
 			return { kind: 'record', database, table: typeDef.table };
 		}
+		context.diagnostics.push({
+			level: 'warning',
+			code: 'TABLE_NOT_GENERATED',
+			...where,
+			message: `${where.table}.${where.attribute} embeds table ${database}.${typeDef.table}, which is not generated (its database is excluded), so it is generated as a nested type`,
+		});
 	}
 	const attributes = typeDef?.attributes ?? source.properties;
 	if (Array.isArray(attributes)) {
@@ -444,7 +463,7 @@ function containsBlob(type, objectTypes, tablesByKey, visiting = new Set()) {
 /**
  * The defineTable projections over stored attributes, with Blob-bearing attributes kept out of
  * every write: the transport has no blob contract yet, so a write could only delete or corrupt one.
- * For the same reason a Blob is optional on read whatever its schema nullability.
+ * For the same reason a Blob-bearing attribute is optional on read whatever its schema nullability.
  * @param {IRTable} table
  * @param {Map<string, IRObjectType>} objectTypes
  * @param {Map<string, IRTable>} tablesByKey
@@ -457,6 +476,9 @@ export function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
 			.filter((attribute) => containsBlob(attribute.type, objectTypes, tablesByKey))
 			.map((attribute) => attribute.name),
 	);
+	const unwritable = table.attributes
+		.filter((attribute) => !attribute.readOnly && blobBearing.has(attribute.name))
+		.map((attribute) => attribute.name);
 	for (const attribute of table.attributes) {
 		if (blobBearing.has(attribute.name) && requiredOnInsert(attribute)) {
 			diagnostics.push({
@@ -475,18 +497,14 @@ export function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
 	return {
 		record: table.attributes.map((attribute) => ({
 			name: attribute.name,
-			optional:
-				attribute.nullable ||
-				(!attribute.primaryKey &&
-					attribute.type.kind === 'scalar' &&
-					attribute.type.scalar === 'Blob'),
+			optional: attribute.nullable || (!attribute.primaryKey && blobBearing.has(attribute.name)),
 		})),
 		insert: writable.map((attribute) => ({
 			name: attribute.name,
 			optional: attribute.primaryKey || attribute.nullable,
 		})),
 		upsert:
-			blobBearing.size > 0
+			unwritable.length > 0
 				? null
 				: writable.map((attribute) => ({
 						name: attribute.name,
@@ -496,7 +514,7 @@ export function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
 		clearable: patchable
 			.filter((attribute) => attribute.nullable)
 			.map((attribute) => attribute.name),
-		unwritable: [...blobBearing],
+		unwritable,
 		query: table.attributes
 			.filter((attribute) => attribute.indexed)
 			.map((attribute) => ({ name: attribute.name, optional: true })),

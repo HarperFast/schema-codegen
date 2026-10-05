@@ -43,7 +43,7 @@ describe('createRegenerationScheduler', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(run).toHaveBeenCalledTimes(2);
 		finishers.shift()?.();
-		await scheduler.idle();
+		await vi.advanceTimersByTimeAsync(100);
 		expect(run).toHaveBeenCalledTimes(2);
 		expect(maxActive).toBe(1);
 	});

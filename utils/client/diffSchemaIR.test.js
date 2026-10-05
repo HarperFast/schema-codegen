@@ -495,9 +495,22 @@ describe('diffSchemaIR', () => {
 			}),
 		);
 		expect(required.changes.find((change) => change.table === 'Snapshot')).toMatchObject({
-			kind: 'contractChanged',
+			kind: 'embeddedTableChanged',
 			breaks: ['write'],
 		});
+		const both = diffSchemaIR(
+			irOf((tables) => tables.push({ ...snapshot, attributes: [...snapshot.attributes] })),
+			irOf((tables) => {
+				tables.push({
+					...snapshot,
+					attributes: [...snapshot.attributes, { name: 'takenAt', type: 'Date', indexed: {} }],
+				});
+				find(tables, 'Customer').attributes.push({ name: 'tier', type: 'String', nullable: false });
+			}),
+		);
+		expect(
+			both.changes.filter((change) => change.table === 'Snapshot').map((change) => change.kind),
+		).toEqual(['attributeAdded', 'embeddedTableChanged']);
 	});
 
 	it('keeps tables whose names contain dots apart', () => {

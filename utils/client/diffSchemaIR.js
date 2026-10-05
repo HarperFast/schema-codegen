@@ -67,8 +67,8 @@ export function diffSchemaIR(from, to) {
 	const fromTables = new Map(from.tables.map((table) => [keyOf(table), table]));
 	const toTables = new Map(to.tables.map((table) => [keyOf(table), table]));
 	const keys = [...new Set([...fromTables.keys(), ...toTables.keys()])].sort(compareText);
-	/** @type {IRTable[]} */
-	const changedThroughEmbedding = [];
+	/** @type {{ table: IRTable, itemized: boolean }[]} */
+	const changedTables = [];
 
 	for (const key of keys) {
 		const before = fromTables.get(key);
@@ -108,15 +108,16 @@ export function diffSchemaIR(from, to) {
 			});
 		}
 		if (before.hash !== after.hash) {
-			const itemized = changes.length;
+			const count = changes.length;
 			diffTable(before, after, fromTypes, toTypes, changes, delta);
-			if (changes.length === itemized) changedThroughEmbedding.push(after);
+			changedTables.push({ table: after, itemized: changes.length > count });
 		}
 	}
-	for (const table of changedThroughEmbedding) {
+	const ownChanges = [...changes];
+	for (const { table, itemized } of changedTables) {
 		const embedded = embeddedTableKeys(table, toTypes, toTables);
 		const inherited = new Set(
-			changes
+			ownChanges
 				.filter((change) => embedded.has(keyOf({ database: change.database, name: change.table })))
 				.flatMap((change) => change.breaks),
 		);
@@ -124,16 +125,23 @@ export function diffSchemaIR(from, to) {
 		const breaks = /** @type {BreakAxis[]} */ (['read', 'write']).filter((axis) =>
 			inherited.has(axis),
 		);
-		changes.push({
-			kind: 'contractChanged',
-			database: table.database,
-			table: table.name,
-			breaks,
-			message:
-				breaks.length > 0
-					? `${table.database}.${table.name} embeds a table whose change breaks ${breaks.join(', ')}`
-					: `${table.database}.${table.name} changed through a nested type or an embedded table, whose own changes are listed`,
-		});
+		if (breaks.length > 0) {
+			changes.push({
+				kind: 'embeddedTableChanged',
+				database: table.database,
+				table: table.name,
+				breaks,
+				message: `${table.database}.${table.name} embeds a table whose change breaks ${breaks.join(', ')}`,
+			});
+		} else if (!itemized) {
+			changes.push({
+				kind: 'contractChanged',
+				database: table.database,
+				table: table.name,
+				breaks: [],
+				message: `${table.database}.${table.name} changed through a nested type or an embedded table, whose own changes are listed`,
+			});
+		}
 	}
 	for (const [name, type] of fromTypes) {
 		const next = toTypes.get(name);

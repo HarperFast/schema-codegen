@@ -79,13 +79,22 @@ describe('emitKotlinModule', () => {
 			'public val meta: HarperValue? = null',
 			'public val visits: Long? = null',
 			'public val createdAt: Instant,',
-			'HarperConverters.list(HarperConverters.nullable(HarperConverters.int))',
+			'scores = row.harperOptional("scores", "coverage_Customer", nullableIntListConverter),',
 			'address = row.harperOptional("address", "coverage_Customer", Address),',
 		]) {
 			expect(customer).toContain(declaration);
 		}
 		expect(models).toContain('import java.math.BigInteger\n');
 		expect(models).toContain('import java.time.Instant\n');
+	});
+
+	it('builds each list converter once, as a file-level value no member can shadow', () => {
+		expect(models).toContain(
+			'private val nullableIntListConverter = HarperConverters.list(HarperConverters.nullable(HarperConverters.int))\n',
+		);
+		expect(models).toContain('private val nodeListConverter = HarperConverters.list(Node)\n');
+		expect(models.match(/private val stringListConverter = /g)).toHaveLength(1);
+		expect(models).not.toMatch(/\(HarperConverters\.list\(/);
 	});
 
 	it('compares ByteArray attributes by content', () => {
@@ -124,6 +133,25 @@ describe('emitKotlinModule', () => {
 		expect(schema).toContain('direction = HarperSyncProfile.Direction.PULL,');
 		expect(schema).toContain('retentionMs = 2592000000L,');
 		expect(schema).toContain(`public const val SCHEMA_HASH: String = "${ir.schemaHash}"`);
+	});
+
+	it('gives profiles whose names sanitize alike their own constants', () => {
+		const schema =
+			emitKotlinModule(
+				buildSchemaIR({
+					tables: spikeTables(),
+					syncProfiles: {
+						profiles: { 'my-orders': { tables: ['Order'] }, myOrders: { tables: ['Order'] } },
+					},
+				}),
+			).find((file) => file.path.endsWith('HarperSchema.kt'))?.content ?? '';
+		expect(schema).toContain('listOf(HarperProfiles.myOrders_2, HarperProfiles.myOrders)');
+		expect(schema).toContain(
+			'public val myOrders_2: HarperSyncProfile = HarperSyncProfile(\n\t\tname = "my-orders",',
+		);
+		expect(schema).toContain(
+			'public val myOrders: HarperSyncProfile = HarperSyncProfile(\n\t\tname = "myOrders",',
+		);
 	});
 
 	it('keeps the runtime package in step with the models', () => {

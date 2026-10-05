@@ -62,6 +62,27 @@ describe('handleApplication', () => {
 		});
 	});
 
+	it('reads the type registry on every run', async () => {
+		const scope = fakeScope({ schemaTypes: 'types.ts', schemaIR: 'ir.json' });
+		await handleApplication(/** @type {any} */ (scope));
+		await vi.advanceTimersByTimeAsync(5_200);
+		const replaced = new Map([['Address', { attributes: [] }]]);
+		scope.resources.allTypes = replaced;
+		scope.databaseEvents.emit('updateTable');
+		await vi.advanceTimersByTimeAsync(200);
+		expect(regenerateAll.mock.calls.at(-1)?.[3]).toMatchObject({ client: { types: replaced } });
+	});
+
+	it('aborts a run still in flight when the scope closes', async () => {
+		const scope = fakeScope({ schemaTypes: 'types.ts', schemaIR: 'ir.json' });
+		await handleApplication(/** @type {any} */ (scope));
+		await vi.advanceTimersByTimeAsync(5_200);
+		const { signal } = /** @type {any} */ (regenerateAll.mock.calls[0][3]).client;
+		expect(signal.aborted).toBe(false);
+		scope.emit('close');
+		expect(signal.aborted).toBe(true);
+	});
+
 	it('coalesces a burst of schema events into one regeneration', async () => {
 		const scope = fakeScope({ schemaTypes: 'types.ts' });
 		await handleApplication(/** @type {any} */ (scope));

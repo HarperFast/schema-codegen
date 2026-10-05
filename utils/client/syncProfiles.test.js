@@ -35,6 +35,11 @@ describe('parseDuration', () => {
 		expect(parseDuration(14)).toBeNull();
 		expect(parseDuration('14 days')).toBeNull();
 	});
+
+	it('rejects durations that round to nothing or exceed an exact integer', () => {
+		expect(parseDuration('0.4ms')).toBeNull();
+		expect(parseDuration('99999999999999w')).toBeNull();
+	});
 });
 
 describe('normalizeSyncProfiles', () => {

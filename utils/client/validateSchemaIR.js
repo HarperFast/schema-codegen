@@ -1,17 +1,21 @@
-/** @import { SchemaIR } from './irTypes.js' */
+import { hashContracts, hashProfile } from './contractHash.js';
 import { IR_VERSION, SCALAR_TYPES } from './irConstants.js';
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const HASH = /^[0-9a-f]{64}$/;
+const LINE_BREAK_OR_CONTROL = /[\p{Cc}\u2028\u2029]/u;
 const AFFINITIES = new Set(['TEXT', 'INTEGER', 'REAL', 'BLOB']);
 const SERVER_MANAGED = new Set([null, 'createdTime', 'updatedTime', 'derived']);
 const DIRECTIONS = new Set(['pull', 'push', 'bidirectional']);
+const CARDINALITIES = new Set(['one', 'many']);
 
 /**
  * Checks that a value is a schema IR this generator can emit from: the supported `irVersion`, the
- * expected shapes, unique identifier-safe type names, and references that resolve. An IR read
- * from a file is untrusted input, so emitters and the diff call this before using one.
+ * expected shapes, unique identifier-safe type names, references that resolve, and hashes that
+ * match the contents. An IR read from a file is untrusted input, so emitters and the diff call
+ * this before using one.
  * @param {unknown} ir
- * @returns {asserts ir is SchemaIR}
+ * @returns {asserts ir is import('./irTypes.js').SchemaIR}
  */
 export function assertSchemaIR(ir) {
 	const fail = (/** @type {string} */ path, /** @type {string} */ problem) => {
@@ -25,13 +29,26 @@ export function assertSchemaIR(ir) {
 			`version ${JSON.stringify(root.irVersion)} is not supported (expected ${IR_VERSION})`,
 		);
 	}
-	if (typeof root.schemaHash !== 'string') fail('$.schemaHash', 'expected a string');
+	if (!isHash(root.schemaHash)) fail('$.schemaHash', 'expected a lowercase hex SHA-256');
+	if (
+		root.generator !== undefined &&
+		(typeof root.generator !== 'string' || LINE_BREAK_OR_CONTROL.test(root.generator))
+	) {
+		fail('$.generator', 'expected a single-line string');
+	}
 	for (const key of ['tables', 'types', 'profiles', 'diagnostics']) {
 		if (!Array.isArray(root[key])) fail(`$.${key}`, 'expected an array');
 	}
 
-	const tableKeys = new Set();
-	const typeNames = new Set(root.types.map((/** @type {any} */ type) => type?.name));
+	/** @type {Map<string, any>} */
+	const tablesByKey = new Map();
+	const typeNames = new Set();
+	root.types.forEach((/** @type {any} */ type, /** @type {number} */ index) => {
+		if (!isObject(type) || typeof type.name !== 'string')
+			fail(`$.types[${index}]`, 'expected a named type');
+		if (typeNames.has(type.name)) fail(`$.types[${index}]`, `type "${type.name}" is listed twice`);
+		typeNames.add(type.name);
+	});
 	const claimed = new Set();
 	/**
 	 * @param {string} path
@@ -44,11 +61,14 @@ export function assertSchemaIR(ir) {
 		claimed.add(typeName);
 	};
 	root.tables.forEach((/** @type {any} */ table, /** @type {number} */ index) => {
-		if (isObject(table) && typeof table.database === 'string' && typeof table.name === 'string') {
-			tableKeys.add(`${table.database}\u0000${table.name}`);
-		} else {
+		if (!isObject(table) || typeof table.database !== 'string' || typeof table.name !== 'string') {
 			fail(`$.tables[${index}]`, 'expected database and name strings');
 		}
+		const key = `${table.database}\u0000${table.name}`;
+		if (tablesByKey.has(key)) {
+			fail(`$.tables[${index}]`, `table ${table.database}.${table.name} is listed twice`);
+		}
+		tablesByKey.set(key, table);
 	});
 
 	/**
@@ -71,7 +91,7 @@ export function assertSchemaIR(ir) {
 					fail(path, `object type ${JSON.stringify(type.type)} is not in types`);
 				return;
 			case 'record':
-				if (!tableKeys.has(`${type.database}\u0000${type.table}`)) {
+				if (!tablesByKey.has(`${type.database}\u0000${type.table}`)) {
 					fail(path, `embedded table ${type.database}.${type.table} is not in tables`);
 				}
 				return;
@@ -86,7 +106,8 @@ export function assertSchemaIR(ir) {
 		if (table.primaryKey !== null && typeof table.primaryKey !== 'string')
 			fail(`${path}.primaryKey`, 'expected a string or null');
 		if (typeof table.sealed !== 'boolean') fail(`${path}.sealed`, 'expected a boolean');
-		if (typeof table.hash !== 'string') fail(`${path}.hash`, 'expected a string');
+		if (!isHash(table.hash)) fail(`${path}.hash`, 'expected a lowercase hex SHA-256');
+		if (!isStringArray(table.profiles)) fail(`${path}.profiles`, 'expected profile names');
 		if (!Array.isArray(table.attributes)) fail(`${path}.attributes`, 'expected an array');
 		const names = new Set();
 		table.attributes.forEach(
@@ -102,28 +123,48 @@ export function assertSchemaIR(ir) {
 				}
 				if (!SERVER_MANAGED.has(attribute.serverManaged))
 					fail(`${at}.serverManaged`, 'unknown value');
-				if (attribute.computed !== null && !isObject(attribute.computed))
-					fail(`${at}.computed`, 'expected an object or null');
+				if (
+					attribute.computed !== null &&
+					!(
+						isObject(attribute.computed) &&
+						isStringOrNull(attribute.computed.from) &&
+						isStringOrNull(attribute.computed.version)
+					)
+				) {
+					fail(`${at}.computed`, 'expected { from, version } or null');
+				}
 			},
 		);
 		if (table.primaryKey !== null && !names.has(table.primaryKey))
 			fail(`${path}.primaryKey`, 'is not an attribute');
 		if (!Array.isArray(table.relations)) fail(`${path}.relations`, 'expected an array');
+		table.relations.forEach((/** @type {any} */ relation, /** @type {number} */ relationIndex) => {
+			const at = `${path}.relations[${relationIndex}]`;
+			if (
+				!isObject(relation) ||
+				typeof relation.name !== 'string' ||
+				relation.name === '' ||
+				!CARDINALITIES.has(relation.cardinality) ||
+				!isObject(relation.target) ||
+				!isStringOrNull(relation.target.database) ||
+				typeof relation.target.table !== 'string'
+			) {
+				fail(at, 'expected a named relation with a cardinality and a target');
+			}
+			if (names.has(relation.name)) fail(at, `"${relation.name}" is also a stored attribute`);
+		});
 		const projections = table.projections;
 		if (!isObject(projections)) fail(`${path}.projections`, 'expected an object');
 		for (const key of ['record', 'insert', 'patch', 'query']) {
 			checkProjection(fail, `${path}.projections.${key}`, projections[key], names);
 		}
+		if (projections.record.length !== names.size)
+			fail(`${path}.projections.record`, 'expected every attribute');
 		if (projections.upsert !== null)
 			checkProjection(fail, `${path}.projections.upsert`, projections.upsert, names);
-		for (const key of ['clearable', 'unwritable']) {
-			if (
-				!Array.isArray(projections[key]) ||
-				projections[key].some((/** @type {any} */ name) => !names.has(name))
-			) {
-				fail(`${path}.projections.${key}`, 'expected attribute names');
-			}
-		}
+		const patchNames = new Set(projections.patch.map((/** @type {any} */ field) => field.name));
+		checkNames(fail, `${path}.projections.clearable`, projections.clearable, patchNames);
+		checkNames(fail, `${path}.projections.unwritable`, projections.unwritable, names);
 		if ((projections.upsert === null) !== projections.unwritable.length > 0) {
 			fail(`${path}.projections.upsert`, 'must be null exactly when an attribute is unwritable');
 		}
@@ -159,7 +200,6 @@ export function assertSchemaIR(ir) {
 
 	root.types.forEach((/** @type {any} */ type, /** @type {number} */ index) => {
 		const path = `$.types[${index}]`;
-		if (!isObject(type) || typeof type.name !== 'string') fail(path, 'expected a named type');
 		claimTypeName(`${path}.typeName`, type.typeName);
 		if (!Array.isArray(type.attributes)) fail(`${path}.attributes`, 'expected an array');
 		const names = new Set();
@@ -176,24 +216,97 @@ export function assertSchemaIR(ir) {
 		);
 	});
 
+	const profileNames = new Set();
 	root.profiles.forEach((/** @type {any} */ profile, /** @type {number} */ index) => {
 		const path = `$.profiles[${index}]`;
 		if (!isObject(profile) || typeof profile.name !== 'string' || profile.name === '')
 			fail(path, 'expected a named profile');
+		if (profileNames.has(profile.name)) fail(path, `profile "${profile.name}" is listed twice`);
+		profileNames.add(profile.name);
+		if (profile.description !== undefined && typeof profile.description !== 'string')
+			fail(`${path}.description`, 'expected a string');
 		if (!DIRECTIONS.has(profile.direction)) fail(`${path}.direction`, 'unknown direction');
+		if (!isStringOrNull(profile.retention)) fail(`${path}.retention`, 'expected a string or null');
 		if (
 			profile.retentionMs !== null &&
-			!(Number.isFinite(profile.retentionMs) && profile.retentionMs > 0)
+			!(Number.isSafeInteger(profile.retentionMs) && profile.retentionMs > 0)
 		) {
-			fail(`${path}.retentionMs`, 'expected a positive number or null');
+			fail(`${path}.retentionMs`, 'expected a positive integer or null');
 		}
-		if (typeof profile.schemaHash !== 'string') fail(`${path}.schemaHash`, 'expected a string');
-		if (!Array.isArray(profile.tables)) fail(`${path}.tables`, 'expected an array');
+		if (!isHash(profile.hash)) fail(`${path}.hash`, 'expected a lowercase hex SHA-256');
+		if (!isHash(profile.schemaHash)) fail(`${path}.schemaHash`, 'expected a lowercase hex SHA-256');
+		if (!Array.isArray(profile.tables) || profile.tables.length === 0)
+			fail(`${path}.tables`, 'expected at least one table');
+		const listed = new Set();
 		profile.tables.forEach((/** @type {any} */ entry, /** @type {number} */ entryIndex) => {
-			if (!isObject(entry) || !tableKeys.has(`${entry.database}\u0000${entry.table}`)) {
-				fail(`${path}.tables[${entryIndex}]`, 'does not reference a table in tables');
-			}
+			const at = `${path}.tables[${entryIndex}]`;
+			const key = isObject(entry) ? `${entry.database}\u0000${entry.table}` : '';
+			const table = tablesByKey.get(key);
+			if (!table) fail(at, 'does not reference a table in tables');
+			if (listed.has(key)) fail(at, 'lists a table twice');
+			listed.add(key);
+			checkScope(fail, `${at}.scope`, entry.scope, table);
 		});
+	});
+
+	const { tableHashes, schemaHash } = hashContracts(root.tables, root.types);
+	root.tables.forEach((/** @type {any} */ table, /** @type {number} */ index) => {
+		if (table.hash !== tableHashes.get(`${table.database}\u0000${table.name}`))
+			fail(`$.tables[${index}].hash`, 'does not match the table');
+	});
+	if (root.schemaHash !== schemaHash) fail('$.schemaHash', 'does not match the tables');
+	root.profiles.forEach((/** @type {any} */ profile, /** @type {number} */ index) => {
+		const hashes = hashProfile(profile, tableHashes);
+		if (profile.hash !== hashes.hash)
+			fail(`$.profiles[${index}].hash`, 'does not match the profile');
+		if (profile.schemaHash !== hashes.schemaHash)
+			fail(`$.profiles[${index}].schemaHash`, "does not match the profile's tables");
+	});
+}
+
+/**
+ * The shapes `normalizeSyncProfiles` produces, so an imported IR cannot carry a scope it would
+ * have refused.
+ * @param {(path: string, problem: string) => never} fail
+ * @param {string} path
+ * @param {any} scope
+ * @param {any} table
+ */
+function checkScope(fail, path, scope, table) {
+	if (isObject(scope) && scope.type === 'all' && Object.keys(scope).length === 1) return;
+	if (
+		!isObject(scope) ||
+		scope.type !== 'match' ||
+		!Array.isArray(scope.conditions) ||
+		scope.conditions.length === 0
+	) {
+		fail(path, 'expected { type: "all" } or { type: "match" } with conditions');
+	}
+	const scoped = new Set();
+	scope.conditions.forEach((/** @type {any} */ condition, /** @type {number} */ index) => {
+		const at = `${path}.conditions[${index}]`;
+		const attribute = isObject(condition)
+			? table.attributes.find(
+					(/** @type {any} */ candidate) => candidate.name === condition.attribute,
+				)
+			: undefined;
+		if (!attribute || attribute.type.kind !== 'scalar')
+			fail(at, 'expected a scalar attribute of the table');
+		if (scoped.has(condition.attribute)) fail(at, `"${condition.attribute}" is scoped twice`);
+		scoped.add(condition.attribute);
+		const valid =
+			condition.operator === 'in'
+				? condition.source === 'literal' &&
+					Array.isArray(condition.value) &&
+					condition.value.length > 0 &&
+					condition.value.every(isLiteral)
+				: condition.operator === 'equals' &&
+					((condition.source === 'literal' && isLiteral(condition.value)) ||
+						(condition.source === 'claim' && isName(condition.claim)) ||
+						(condition.source === 'user' && isName(condition.field)));
+		if (!valid) {
+			fail(at, 'expected an equals condition on a literal, claim or user field, or an in list');
+		}
 	});
 }
 
@@ -205,10 +318,29 @@ export function assertSchemaIR(ir) {
  */
 function checkProjection(fail, path, projection, names) {
 	if (!Array.isArray(projection)) fail(path, 'expected an array');
+	const listed = new Set();
 	for (const field of /** @type {any[]} */ (projection)) {
 		if (!isObject(field) || !names.has(field.name) || typeof field.optional !== 'boolean') {
 			fail(path, 'expected { name, optional } entries naming attributes');
 		}
+		if (listed.has(field.name)) fail(path, `"${field.name}" is listed twice`);
+		listed.add(field.name);
+	}
+}
+
+/**
+ * @param {(path: string, problem: string) => never} fail
+ * @param {string} path
+ * @param {unknown} list
+ * @param {Set<string>} allowed
+ */
+function checkNames(fail, path, list, allowed) {
+	if (
+		!isStringArray(list) ||
+		new Set(list).size !== list.length ||
+		list.some((name) => !allowed.has(name))
+	) {
+		fail(path, 'expected distinct attribute names');
 	}
 }
 
@@ -218,4 +350,48 @@ function checkProjection(fail, path, projection, names) {
  */
 function isObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isHash(value) {
+	return typeof value === 'string' && HASH.test(value);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isStringOrNull(value) {
+	return value === null || typeof value === 'string';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is string[]}
+ */
+function isStringArray(value) {
+	return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isName(value) {
+	return typeof value === 'string' && value !== '';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isLiteral(value) {
+	return (
+		typeof value === 'string' ||
+		typeof value === 'boolean' ||
+		(typeof value === 'number' && Number.isFinite(value))
+	);
 }

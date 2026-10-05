@@ -19,15 +19,15 @@ import { assertSchemaIR } from './validateSchemaIR.js';
  * @typedef {ClientOutputOptions & {
  *   syncProfiles?: string,
  *   types?: Map<string, SourceTypeDef> | Record<string, SourceTypeDef>,
+ *   signal?: AbortSignal,
  * }} RegenerateClientOptions
  */
 
 /**
- * Builds the IR from the given tables and publishes the configured client outputs, reporting
- * profile diagnostics, compatibility with the previously published IR, and stale generated files.
  * @param {SourceTable[]} tables already database-filtered
- * @param {RegenerateClientOptions} options
- * @returns {Promise<SchemaIR>}
+ * @param {RegenerateClientOptions} options `signal` aborts before anything is published; once
+ *   publication starts it runs to completion without yielding
+ * @returns {Promise<SchemaIR | undefined>} undefined when aborted
  */
 export async function regenerateClient(tables, options) {
 	const logger = getLogger();
@@ -45,6 +45,7 @@ export async function regenerateClient(tables, options) {
 			);
 		}
 	}
+	if (options.signal?.aborted) return undefined;
 
 	const ir = buildSchemaIR({
 		tables,

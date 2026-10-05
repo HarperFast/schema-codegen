@@ -30,8 +30,8 @@ export function parseDuration(text) {
 	if (typeof text !== 'string') return null;
 	const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)\s*$/.exec(text);
 	if (!match) return null;
-	const milliseconds = Number(match[1]) * DURATION_UNITS[match[2]];
-	return milliseconds > 0 && Number.isFinite(milliseconds) ? Math.round(milliseconds) : null;
+	const milliseconds = Math.round(Number(match[1]) * DURATION_UNITS[match[2]]);
+	return milliseconds > 0 && Number.isSafeInteger(milliseconds) ? milliseconds : null;
 }
 
 /**
@@ -93,21 +93,21 @@ export function normalizeSyncProfiles(document, tables, diagnostics) {
 	/** @type {Omit<IRProfile, 'hash' | 'schemaHash'>[]} */
 	const profiles = [];
 	for (const name of Object.keys(document.profiles).sort()) {
-		/** @type {IRDiagnostic[]} */
-		const errors = [];
 		/**
 		 * @param {string} code
 		 * @param {string} message
 		 * @param {{ table?: string, attribute?: string }} [where]
 		 */
-		const fail = (code, message, where = {}) =>
-			errors.push({ level: 'error', code, profile: name, ...where, message });
-		const profile = normalizeProfile(name, document.profiles[name], tablesByKey, fail, diagnostics);
-		if (errors.length > 0) {
-			diagnostics.push(...errors);
-		} else if (profile) {
-			profiles.push(profile);
-		}
+		const report = (code, message, where = {}) =>
+			diagnostics.push({ level: 'error', code, profile: name, ...where, message });
+		const profile = normalizeProfile(
+			name,
+			document.profiles[name],
+			tablesByKey,
+			report,
+			diagnostics,
+		);
+		if (profile) profiles.push(profile);
 	}
 	return profiles;
 }
@@ -116,11 +116,17 @@ export function normalizeSyncProfiles(document, tables, diagnostics) {
  * @param {string} name
  * @param {unknown} definition
  * @param {Map<string, IRTable>} tablesByKey
- * @param {(code: string, message: string, where?: { table?: string, attribute?: string }) => void} fail
+ * @param {(code: string, message: string, where?: { table?: string, attribute?: string }) => void} report
  * @param {IRDiagnostic[]} diagnostics
- * @returns {Omit<IRProfile, 'hash' | 'schemaHash'> | null}
+ * @returns {Omit<IRProfile, 'hash' | 'schemaHash'> | null} null when any part of the profile is invalid
  */
-function normalizeProfile(name, definition, tablesByKey, fail, diagnostics) {
+function normalizeProfile(name, definition, tablesByKey, report, diagnostics) {
+	let failed = false;
+	/** @type {typeof report} */
+	const fail = (code, message, where) => {
+		failed = true;
+		report(code, message, where);
+	};
 	if (!isPlainObject(definition)) {
 		fail('PROFILE_INVALID', `profile "${name}" must be a map`);
 		return null;
@@ -244,6 +250,7 @@ function normalizeProfile(name, definition, tablesByKey, fail, diagnostics) {
 	profileTables.sort(
 		(a, b) => compareText(a.database, b.database) || compareText(a.table, b.table),
 	);
+	if (failed) return null;
 
 	return {
 		name,

@@ -1,7 +1,8 @@
 /** @import { SchemaIR } from './irTypes.js' */
+/** @import { StagedFile } from '../writeIfChanged.js' */
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFileAtomic, writeIfChanged } from '../writeIfChanged.js';
+import { commitStaged, discardStaged, readIfExists, stageFile } from '../writeIfChanged.js';
 import { GENERATED_MARKER } from './emitSupport.js';
 import { emitKotlinModule } from './emitKotlin.js';
 import { emitSwiftPackage } from './emitSwift.js';
@@ -34,9 +35,8 @@ export function serializeSchemaIR(ir) {
 }
 
 /**
- * Renders every requested output in memory: the Swift package, the Kotlin module, and the IR file
- * last (it is the baseline the next run diffs against, so it is published after the sources).
- * Nothing is written; invalid options throw before any output exists.
+ * Renders every requested output in memory, the IR file last: it is the baseline the next run
+ * diffs against, so it must never be published ahead of the sources generated from it.
  * @param {SchemaIR} ir
  * @param {ClientOutputOptions} options
  * @returns {ClientOutput[]}
@@ -79,32 +79,46 @@ export function renderClientOutputs(ir, options) {
 }
 
 /**
- * Writes rendered outputs in order. Generated files are replaced atomically when their content
- * changed; scaffolds are created only when absent and never touched again.
+ * Publishes changed outputs, and scaffolds that do not exist yet, as one generation: every file is
+ * staged beside its target before any is moved into place, in order, so a failed write (a full
+ * disk) publishes nothing.
  * @param {ClientOutput[]} outputs
  * @returns {{ written: string[], createdScaffolds: string[] }}
  */
 export function publishClientOutputs(outputs) {
+	/** @type {{ output: ClientOutput, staged: StagedFile }[]} */
+	const pending = [];
+	try {
+		for (const output of outputs) {
+			const unchanged = output.scaffold
+				? fs.existsSync(output.path)
+				: readIfExists(output.path) === output.content;
+			if (unchanged) continue;
+			fs.mkdirSync(path.dirname(output.path), { recursive: true });
+			pending.push({ output, staged: stageFile(output.path, output.content) });
+		}
+	} catch (error) {
+		for (const { staged } of pending) discardStaged(staged);
+		throw error;
+	}
 	/** @type {string[]} */
 	const written = [];
 	/** @type {string[]} */
 	const createdScaffolds = [];
-	for (const output of outputs) {
-		if (output.scaffold) {
-			if (fs.existsSync(output.path)) continue;
-			fs.mkdirSync(path.dirname(output.path), { recursive: true });
-			writeFileAtomic(output.path, output.content);
-			createdScaffolds.push(output.path);
-		} else if (writeIfChanged(output.path, output.content)) {
-			written.push(output.path);
+	pending.forEach(({ output, staged }, index) => {
+		try {
+			commitStaged(staged);
+		} catch (error) {
+			for (const rest of pending.slice(index + 1)) discardStaged(rest.staged);
+			throw error;
 		}
-	}
+		(output.scaffold ? createdScaffolds : written).push(output.path);
+	});
 	return { written, createdScaffolds };
 }
 
 /**
- * Generated sources under a package directory that the current outputs do not include, such as
- * those left behind by a renamed Swift module or Kotlin package. They are reported, never deleted.
+ * Generated sources a renamed Swift module or Kotlin package left behind: reported, never deleted.
  * @param {string} directory a package directory
  * @param {ClientOutput[]} outputs
  * @returns {string[]}

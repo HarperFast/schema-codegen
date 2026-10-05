@@ -6,12 +6,7 @@ import {
 	recursiveValueEdges,
 	swiftString,
 } from './emitSupport.js';
-import {
-	allocateMemberNames,
-	escapeSwiftIdentifier,
-	RESERVED_MEMBER_NAMES,
-	toCodeIdentifier,
-} from './naming.js';
+import { allocateMemberNames, escapeSwiftIdentifier, RESERVED_MEMBER_NAMES } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
 const SWIFT_TYPES = /** @type {Record<string, string>} */ ({
@@ -248,8 +243,14 @@ function tableModel(table, context) {
 		table.attributes.map((attribute) => [attribute.name, attribute]),
 	);
 	const patchable = new Set(table.projections.patch.map((field) => field.name));
-	const record = table.attributes.map((attribute) =>
-		propertyOf(attribute, identifierOf(attribute.name), typeName, context, attribute.nullable),
+	const record = table.projections.record.map((field) =>
+		propertyOf(
+			/** @type {IRAttribute} */ (attributesByName.get(field.name)),
+			identifierOf(field.name),
+			typeName,
+			context,
+			field.optional,
+		),
 	);
 	const recordByName = new Map(record.map((property) => [property.raw, property]));
 	const declared = [
@@ -445,13 +446,14 @@ function tableSchemaLiteral(table) {
 	const attributesByName = new Map(
 		table.attributes.map((attribute) => [attribute.name, attribute]),
 	);
+	const optional = new Map(table.projections.record.map((field) => [field.name, field.optional]));
 	const columns = table.storage.columns.map((column) => {
 		const attribute = /** @type {IRAttribute} */ (attributesByName.get(column.name));
 		const parts = [
 			`name: ${swiftString(column.name)}`,
 			`type: .${columnType(attribute.type)}`,
 			`affinity: .${column.affinity.toLowerCase()}`,
-			`nullable: ${attribute.nullable}`,
+			`nullable: ${optional.get(column.name)}`,
 		];
 		if (attribute.primaryKey) parts.push('primaryKey: true');
 		if (attribute.indexed) parts.push('indexed: true');
@@ -479,11 +481,11 @@ function tableSchemaLiteral(table) {
  */
 function schemaSource(ir) {
 	const profileNames = allocateMemberNames(
-		ir.profiles.map((profile) => toCodeIdentifier(profile.name)),
+		ir.profiles.map((profile) => profile.name),
 		PROFILE_RESERVED,
 	);
 	const constantOf = (/** @type {IRProfile} */ profile) =>
-		escapeSwiftIdentifier(/** @type {string} */ (profileNames.get(toCodeIdentifier(profile.name))));
+		escapeSwiftIdentifier(/** @type {string} */ (profileNames.get(profile.name)));
 	const tablesByKey = new Map(
 		ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table]),
 	);

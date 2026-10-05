@@ -103,6 +103,78 @@ describe('assertSchemaIR', () => {
 			/does not reference a table/,
 		],
 		['an unknown direction', (ir) => (ir.profiles[0].direction = 'sideways'), /unknown direction/],
+		[
+			'a generator that would break out of the header comment',
+			(ir) => (ir.generator = 'x\nimport Evil'),
+			/generator: expected a single-line string/,
+		],
+		[
+			'a schema hash that is not a SHA-256',
+			(ir) => (ir.schemaHash = `${ir.schemaHash}\nfun evil() {}`),
+			/schemaHash: expected a lowercase hex SHA-256/,
+		],
+		['a table listed twice', (ir) => ir.tables.push({ ...ir.tables[0] }), /is listed twice/],
+		[
+			'a record projection that leaves out an attribute',
+			(ir) => ir.tables[0].projections.record.pop(),
+			/expected every attribute/,
+		],
+		[
+			'a clearable attribute listed twice',
+			(ir) => {
+				const { clearable } = ir.tables.find(
+					(/** @type {any} */ t) => t.projections.clearable.length > 0,
+				).projections;
+				clearable.push(clearable[0]);
+			},
+			/clearable: expected distinct attribute names/,
+		],
+		[
+			'a relationship that shadows a stored attribute',
+			(ir) =>
+				(ir.tables.find((/** @type {any} */ t) => t.relations.length > 0).relations[0].name = 'id'),
+			/is also a stored attribute/,
+		],
+		[
+			'a match scope without conditions',
+			(ir) => (ir.profiles[0].tables[0].scope = { type: 'match', conditions: [] }),
+			/scope: expected/,
+		],
+		[
+			'a scope on an attribute the table does not store',
+			(ir) => (ir.profiles[0].tables[0].scope.conditions[0].attribute = 'ghost'),
+			/expected a scalar attribute of the table/,
+		],
+		[
+			'a scope reference without a field',
+			(ir) => (ir.profiles[0].tables[0].scope.conditions[0].field = ''),
+			/expected an equals condition/,
+		],
+		[
+			'a fractional retention',
+			(ir) => (ir.profiles[0].retentionMs = 1.5),
+			/retentionMs: expected a positive integer/,
+		],
+		[
+			'a table hash that does not match the table',
+			(ir) => (ir.tables[0].attributes[1].nullable = !ir.tables[0].attributes[1].nullable),
+			/tables\[0\]\.hash: does not match the table/,
+		],
+		[
+			'a schema hash that does not match the tables',
+			(ir) => (ir.schemaHash = ir.tables[0].hash),
+			/\$\.schemaHash: does not match the tables/,
+		],
+		[
+			'a profile hash that does not match the profile',
+			(ir) => (ir.profiles[0].retentionMs += 1),
+			/profiles\[0\]\.hash: does not match the profile/,
+		],
+		[
+			'a hello-frame hash that does not match the profile tables',
+			(ir) => (ir.profiles[0].schemaHash = ir.schemaHash),
+			/profiles\[0\]\.schemaHash: does not match/,
+		],
 	];
 	it.each(corruptions)('rejects %s', (_, corrupt, message) => {
 		const ir = validIR();

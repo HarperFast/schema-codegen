@@ -1,7 +1,7 @@
 /** @import { IRAffinity, IRAttribute, IRDiagnostic, IRNestedAttribute, IRObjectType, IRProfile, IRProjections, IRRelation, IRStorage, IRTable, IRType, SchemaIR } from './irTypes.js' */
 import { isNullable } from '../isNullable.js';
 import { singularize } from '../singularize.js';
-import { hashCanonical } from './canonicalHash.js';
+import { hashContracts, hashProfile } from './contractHash.js';
 import { createNameAllocator, RESERVED_TYPE_NAMES, toCodeIdentifier } from './naming.js';
 import { IR_VERSION, SCALAR_TYPES } from './irConstants.js';
 import { compareText, normalizeSyncProfiles } from './syncProfiles.js';
@@ -126,43 +126,18 @@ export function buildSchemaIR({ tables: sourceTables, types, syncProfiles, previ
 	const tablesByKey = new Map(tables.map((table) => [tableKey(table.database, table.name), table]));
 
 	for (const table of tables) {
-		table.projections = projectionsOf(table, objectTypes, tablesByKey);
+		table.projections = projectionsOf(table, objectTypes, tablesByKey, context.diagnostics);
 	}
 	allocateTypeNames(tables, typeList, previous);
 
+	const { tableHashes, schemaHash } = hashContracts(tables, typeList);
 	for (const table of tables) {
-		table.hash = hashCanonical({
-			irVersion: IR_VERSION,
-			table: tableContract(table, { objectTypes, tablesByKey }),
-		});
+		table.hash = /** @type {string} */ (tableHashes.get(tableKey(table.database, table.name)));
 	}
-	const schemaHash = hashCanonical({
-		irVersion: IR_VERSION,
-		tables: tables.map((table) => tableContract(table, { objectTypes, tablesByKey })),
-	});
 
 	/** @type {IRProfile[]} */
 	const profiles = normalizeSyncProfiles(syncProfiles, tables, context.diagnostics).map(
-		(profile) => ({
-			...profile,
-			hash: hashCanonical({
-				irVersion: IR_VERSION,
-				profile: {
-					name: profile.name,
-					direction: profile.direction,
-					retentionMs: profile.retentionMs,
-					tables: profile.tables,
-				},
-			}),
-			schemaHash: hashCanonical({
-				irVersion: IR_VERSION,
-				tables: profile.tables.map((entry) => ({
-					database: entry.database,
-					table: entry.table,
-					hash: tablesByKey.get(tableKey(entry.database, entry.table))?.hash,
-				})),
-			}),
-		}),
+		(profile) => ({ ...profile, ...hashProfile(profile, tableHashes) }),
 	);
 	for (const profile of profiles) {
 		for (const entry of profile.tables) {
@@ -240,9 +215,8 @@ function describeTable(source, context) {
 				}
 			: null;
 		const type = toType(attribute, context, where);
-		const blob = !isPrimaryKey && type.kind === 'scalar' && type.scalar === 'Blob';
 		const nullable =
-			computed || serverManaged === 'derived' || blob
+			computed || serverManaged === 'derived'
 				? true
 				: isPrimaryKey || serverManaged
 					? false
@@ -314,6 +288,15 @@ function metadataColumn(base, attributeNames) {
 	let name = base;
 	while (attributeNames.has(name)) name = `_${name}`;
 	return name;
+}
+
+/**
+ * Whether the server rejects an insert that omits the attribute.
+ * @param {IRAttribute} attribute
+ * @returns {boolean}
+ */
+export function requiredOnInsert(attribute) {
+	return !attribute.readOnly && !attribute.primaryKey && !attribute.nullable;
 }
 
 /**
@@ -461,17 +444,30 @@ function containsBlob(type, objectTypes, tablesByKey, visiting = new Set()) {
 /**
  * The defineTable projections over stored attributes, with Blob-bearing attributes kept out of
  * every write: the transport has no blob contract yet, so a write could only delete or corrupt one.
+ * For the same reason a Blob is optional on read whatever its schema nullability.
  * @param {IRTable} table
  * @param {Map<string, IRObjectType>} objectTypes
  * @param {Map<string, IRTable>} tablesByKey
+ * @param {IRDiagnostic[]} diagnostics
  * @returns {IRProjections}
  */
-function projectionsOf(table, objectTypes, tablesByKey) {
+function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
 	const blobBearing = new Set(
 		table.attributes
 			.filter((attribute) => containsBlob(attribute.type, objectTypes, tablesByKey))
 			.map((attribute) => attribute.name),
 	);
+	for (const attribute of table.attributes) {
+		if (blobBearing.has(attribute.name) && requiredOnInsert(attribute)) {
+			diagnostics.push({
+				level: 'warning',
+				code: 'BLOB_REQUIRED',
+				table: table.name,
+				attribute: attribute.name,
+				message: `${table.name}.${attribute.name} is required and holds a Blob, which clients cannot send, so client inserts into ${table.name} are rejected`,
+			});
+		}
+	}
 	const writable = table.attributes.filter(
 		(attribute) => !attribute.readOnly && !blobBearing.has(attribute.name),
 	);
@@ -479,7 +475,11 @@ function projectionsOf(table, objectTypes, tablesByKey) {
 	return {
 		record: table.attributes.map((attribute) => ({
 			name: attribute.name,
-			optional: attribute.nullable,
+			optional:
+				attribute.nullable ||
+				(!attribute.primaryKey &&
+					attribute.type.kind === 'scalar' &&
+					attribute.type.scalar === 'Blob'),
 		})),
 		insert: writable.map((attribute) => ({
 			name: attribute.name,
@@ -549,103 +549,4 @@ function allocateTypeNames(tables, types, previous) {
 			allocator.claim(RESERVED_TYPE_NAMES.has(entry.base) ? `${entry.base}Record` : entry.base),
 		);
 	}
-}
-
-/**
- * @typedef {{ objectTypes: Map<string, IRObjectType>, tablesByKey: Map<string, IRTable> }} ContractContext
- */
-
-/**
- * The part of a table that determines what a device stores and sends; its hash is the table's
- * wire/storage identity. Nested object types and embedded table shapes are inlined, so a change
- * to either changes the hash of every table that carries it.
- * @param {IRTable} table
- * @param {ContractContext} context
- * @returns {object}
- */
-function tableContract(table, context) {
-	const visiting = new Set([`r:${tableKey(table.database, table.name)}`]);
-	return {
-		database: table.database,
-		name: table.name,
-		primaryKey: table.primaryKey,
-		sealed: table.sealed,
-		versionColumn: table.storage.versionColumn,
-		extraColumn: table.storage.extraColumn,
-		attributes: [...table.attributes]
-			.sort((a, b) => compareText(a.name, b.name))
-			.map((attribute) => ({
-				name: attribute.name,
-				type: contractType(attribute.type, context, visiting),
-				nullable: attribute.nullable,
-				primaryKey: attribute.primaryKey,
-				indexed: attribute.indexed,
-				serverManaged: attribute.serverManaged,
-				computed: attribute.computed,
-			})),
-		relations: [...table.relations]
-			.sort((a, b) => compareText(a.name, b.name))
-			.map((relation) => ({
-				name: relation.name,
-				cardinality: relation.cardinality,
-				from: relation.from ?? null,
-				to: relation.to ?? null,
-				target: relation.target,
-			})),
-	};
-}
-
-/**
- * @param {IRType} type
- * @param {ContractContext} context
- * @param {Set<string>} visiting
- * @returns {object}
- */
-function contractType(type, context, visiting) {
-	switch (type.kind) {
-		case 'scalar':
-			return type;
-		case 'array':
-			return {
-				kind: 'array',
-				element: contractType(type.element, context, visiting),
-				elementNullable: type.elementNullable,
-			};
-		case 'object': {
-			const key = `o:${type.type}`;
-			if (visiting.has(key)) return { kind: 'object', type: type.type, cycle: true };
-			const attributes = context.objectTypes.get(type.type)?.attributes ?? [];
-			return {
-				kind: 'object',
-				type: type.type,
-				attributes: nestedContract(attributes, context, new Set(visiting).add(key)),
-			};
-		}
-		case 'record': {
-			const key = `r:${tableKey(type.database, type.table)}`;
-			if (visiting.has(key)) return { ...type, cycle: true };
-			const attributes =
-				context.tablesByKey.get(tableKey(type.database, type.table))?.attributes ?? [];
-			return {
-				...type,
-				attributes: nestedContract(attributes, context, new Set(visiting).add(key)),
-			};
-		}
-	}
-}
-
-/**
- * @param {(IRAttribute | IRNestedAttribute)[]} attributes
- * @param {ContractContext} context
- * @param {Set<string>} visiting
- * @returns {object[]}
- */
-function nestedContract(attributes, context, visiting) {
-	return [...attributes]
-		.sort((a, b) => compareText(a.name, b.name))
-		.map((attribute) => ({
-			name: attribute.name,
-			type: contractType(attribute.type, context, visiting),
-			nullable: attribute.nullable,
-		}));
 }

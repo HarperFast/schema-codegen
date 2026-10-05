@@ -106,7 +106,17 @@ export function diffSchemaIR(from, to) {
 			});
 		}
 		if (before.hash !== after.hash) {
+			const itemized = changes.length;
 			diffTable(before, after, fromTypes, toTypes, changes, delta);
+			if (changes.length === itemized) {
+				changes.push({
+					kind: 'contractChanged',
+					database: after.database,
+					table: after.name,
+					breaks: [],
+					message: `${after.database}.${after.name} changed through a nested type or an embedded table, whose own changes are listed`,
+				});
+			}
 		}
 	}
 	for (const [name, type] of fromTypes) {
@@ -329,6 +339,19 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 				version: current.computed.version,
 			});
 		}
+		if (
+			previous.serverManaged !== current.serverManaged &&
+			previous.readOnly === current.readOnly
+		) {
+			record(
+				'serverManagedChanged',
+				[],
+				current.serverManaged
+					? `${name}.${attributeName} is now server-managed (${current.serverManaged})`
+					: `${name}.${attributeName} is no longer server-managed`,
+				where,
+			);
+		}
 		if (previous.indexed !== current.indexed) {
 			record(
 				'indexChanged',
@@ -462,9 +485,14 @@ function compareTypes(before, after, fromTypes, toTypes, path, seen) {
 			/** @type {TypeFinding[]} */
 			const findings = [];
 			for (const [name, attribute] of beforeAttributes) {
-				if (!afterAttributes.has(name) && !attribute.nullable) {
+				if (!afterAttributes.has(name)) {
 					findings.push({
-						...finding('nestedAttributeRemoved', true, false, `${path}.${name} removed`),
+						...finding(
+							'nestedAttributeRemoved',
+							!attribute.nullable,
+							false,
+							`${path}.${name} removed`,
+						),
 						path: `${path}.${name}`,
 					});
 				}
@@ -473,12 +501,15 @@ function compareTypes(before, after, fromTypes, toTypes, path, seen) {
 				const previous = beforeAttributes.get(name);
 				const nestedPath = `${path}.${name}`;
 				if (!previous) {
-					if (!attribute.nullable) {
-						findings.push({
-							...finding('nestedAttributeAdded', false, true, `${nestedPath} added as required`),
-							path: nestedPath,
-						});
-					}
+					findings.push({
+						...finding(
+							'nestedAttributeAdded',
+							false,
+							!attribute.nullable,
+							`${nestedPath} added${attribute.nullable ? '' : ' as required'}`,
+						),
+						path: nestedPath,
+					});
 					continue;
 				}
 				findings.push(

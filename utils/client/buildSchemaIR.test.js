@@ -53,6 +53,7 @@ describe('buildSchemaIR', () => {
 			'coverage.Customer',
 			'coverage.Purchase',
 			'data.Data',
+			'data.ModelsKt',
 			'data.OnlyId',
 			'data.Order',
 			'data.Product',
@@ -597,6 +598,25 @@ describe('contract hashes', () => {
 		});
 		expect(table(changed, 'Snapshot').hash).not.toBe(table(original, 'Snapshot').hash);
 		expect(table(changed, 'Purchase').hash).toBe(table(original, 'Purchase').hash);
+	});
+
+	it('change when an embedded table is sealed', () => {
+		const snapshot = () => ({
+			tableName: 'Snapshot',
+			primaryKey: 'id',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'buyer', type: 'Customer' },
+			],
+		});
+		const original = buildSchemaIR({
+			tables: [...coverageTables(), snapshot()],
+			types: coverageTypes(),
+		});
+		const sealed = coverageTables();
+		sealed[0].sealed = true;
+		const changed = buildSchemaIR({ tables: [...sealed, snapshot()], types: coverageTypes() });
+		expect(table(changed, 'Snapshot').hash).not.toBe(table(original, 'Snapshot').hash);
 	});
 
 	it('change when a Blob becomes required', () => {

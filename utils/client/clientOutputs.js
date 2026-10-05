@@ -7,6 +7,9 @@ import { GENERATED_MARKER } from './emitSupport.js';
 import { emitKotlinModule } from './emitKotlin.js';
 import { emitSwiftPackage } from './emitSwift.js';
 
+/** Skipped by the stale-file scan, as are dot folders such as SwiftPM's `.build`. */
+const BUILD_DIRECTORIES = new Set(['build', 'node_modules']);
+
 /**
  * Where client outputs go. Relative paths resolve against `baseDirectory`.
  * @typedef {Object} ClientOutputOptions
@@ -80,22 +83,20 @@ export function renderClientOutputs(ir, options) {
 
 /**
  * Publishes changed outputs, and scaffolds that do not exist yet, as one generation: every file is
- * staged beside its target before any is moved into place, in order, so a failed write (a full
- * disk) publishes nothing.
+ * staged beside its target before any is moved into place, in order, and a failure while moving
+ * them restores the files already replaced, so a failed write leaves the previous generation.
  * @param {ClientOutput[]} outputs
  * @returns {{ written: string[], createdScaffolds: string[] }}
  */
 export function publishClientOutputs(outputs) {
-	/** @type {{ output: ClientOutput, staged: StagedFile }[]} */
+	/** @type {{ output: ClientOutput, staged: StagedFile, previous: string | undefined }[]} */
 	const pending = [];
 	try {
 		for (const output of outputs) {
-			const unchanged = output.scaffold
-				? fs.existsSync(output.path)
-				: readIfExists(output.path) === output.content;
-			if (unchanged) continue;
+			const previous = readIfExists(output.path);
+			if (output.scaffold ? previous !== undefined : previous === output.content) continue;
 			fs.mkdirSync(path.dirname(output.path), { recursive: true });
-			pending.push({ output, staged: stageFile(output.path, output.content) });
+			pending.push({ output, staged: stageFile(output.path, output.content), previous });
 		}
 	} catch (error) {
 		for (const { staged } of pending) discardStaged(staged);
@@ -110,11 +111,34 @@ export function publishClientOutputs(outputs) {
 			commitStaged(staged);
 		} catch (error) {
 			for (const rest of pending.slice(index + 1)) discardStaged(rest.staged);
-			throw error;
+			throw restorePrevious(pending.slice(0, index), error);
 		}
 		(output.scaffold ? createdScaffolds : written).push(output.path);
 	});
 	return { written, createdScaffolds };
+}
+
+/**
+ * @param {{ staged: StagedFile, previous: string | undefined }[]} committed
+ * @param {unknown} cause
+ * @returns {unknown} the error to throw: the cause, or an aggregate when a restore failed too
+ */
+function restorePrevious(committed, cause) {
+	const failures = [];
+	for (const { staged, previous } of committed.reverse()) {
+		try {
+			if (previous === undefined) fs.rmSync(staged.target, { force: true });
+			else commitStaged(stageFile(staged.target, previous));
+		} catch (failure) {
+			failures.push(failure);
+		}
+	}
+	return failures.length === 0
+		? cause
+		: new AggregateError(
+				[cause, ...failures],
+				'publishing client outputs failed and the previous generation could not be fully restored; regenerate to repair it',
+			);
 }
 
 /**
@@ -132,11 +156,20 @@ export function findStaleGeneratedFiles(directory, outputs) {
 	 * @param {number} depth
 	 */
 	const walk = (folder, depth) => {
-		if (depth > 16 || !fs.existsSync(folder)) return;
-		for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+		if (depth > 16) return;
+		/** @type {fs.Dirent[]} */
+		let entries;
+		try {
+			entries = fs.readdirSync(folder, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
 			const entryPath = path.join(folder, entry.name);
 			if (entry.isDirectory()) {
-				walk(entryPath, depth + 1);
+				if (!BUILD_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) {
+					walk(entryPath, depth + 1);
+				}
 			} else if (
 				entry.isFile() &&
 				/\.(swift|kt)$/.test(entry.name) &&
@@ -153,14 +186,22 @@ export function findStaleGeneratedFiles(directory, outputs) {
 
 /**
  * @param {string} filePath
- * @returns {boolean}
+ * @returns {boolean} false for a file that cannot be read
  */
 function isGenerated(filePath) {
-	const handle = fs.openSync(filePath, 'r');
+	/** @type {number} */
+	let handle;
+	try {
+		handle = fs.openSync(filePath, 'r');
+	} catch {
+		return false;
+	}
 	try {
 		const buffer = Buffer.alloc(GENERATED_MARKER.length);
 		const bytesRead = fs.readSync(handle, buffer, 0, buffer.length, 0);
 		return buffer.toString('utf8', 0, bytesRead) === GENERATED_MARKER;
+	} catch {
+		return false;
 	} finally {
 		fs.closeSync(handle);
 	}

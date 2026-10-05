@@ -1,4 +1,4 @@
-/** @import { IRAttribute, IRNestedAttribute, IRObjectType, IRProfile, IRTable, IRType } from './irTypes.js' */
+/** @import { IRObjectType, IRProfile, IRTable, IRType } from './irTypes.js' */
 import { hashCanonical } from './canonicalHash.js';
 import { IR_VERSION } from './irConstants.js';
 import { compareText } from './syncProfiles.js';
@@ -77,18 +77,18 @@ export function hashProfile(profile, tableHashes) {
  */
 function tableContract(table, objectTypes, tablesByKey) {
 	const own = `r:${tableKey(table.database, table.name)}`;
-	/** @type {Record<string, object[]>} */
+	/** @type {Record<string, object>} */
 	const shapes = {};
-	/** @type {{ key: string, attributes: (IRAttribute | IRNestedAttribute)[] }[]} */
+	/** @type {{ key: string, describe: () => object }[]} */
 	const pending = [];
 	/**
 	 * @param {string} key
-	 * @param {(IRAttribute | IRNestedAttribute)[]} attributes
+	 * @param {() => object} describe
 	 */
-	const reach = (key, attributes) => {
+	const reach = (key, describe) => {
 		if (key === own || key in shapes) return;
-		shapes[key] = [];
-		pending.push({ key, attributes });
+		shapes[key] = {};
+		pending.push({ key, describe });
 	};
 	/**
 	 * @param {IRType} type
@@ -105,40 +105,59 @@ function tableContract(table, objectTypes, tablesByKey) {
 					elementNullable: type.elementNullable,
 				};
 			case 'object':
-				reach(`o:${type.type}`, objectTypes.get(type.type)?.attributes ?? []);
+				reach(`o:${type.type}`, () => ({
+					attributes: sortedByName(objectTypes.get(type.type)?.attributes ?? []).map(
+						(attribute) => ({
+							name: attribute.name,
+							type: reference(attribute.type),
+							nullable: attribute.nullable,
+						}),
+					),
+				}));
 				return { kind: 'object', type: type.type };
 			case 'record': {
 				const key = tableKey(type.database, type.table);
-				reach(`r:${key}`, tablesByKey.get(key)?.attributes ?? []);
+				const embedded = tablesByKey.get(key);
+				if (embedded) reach(`r:${key}`, () => recordShape(embedded, reference));
 				return { kind: 'record', database: type.database, table: type.table };
 			}
 		}
 	};
 
-	const attributes = sortedByName(table.attributes).map((attribute) => ({
-		name: attribute.name,
-		type: reference(attribute.type),
-		nullable: attribute.nullable,
-		primaryKey: attribute.primaryKey,
-		indexed: attribute.indexed,
-		serverManaged: attribute.serverManaged,
-		computed: attribute.computed,
-	}));
+	const contract = {
+		...recordShape(table, reference),
+		database: table.database,
+		name: table.name,
+		versionColumn: table.storage.versionColumn,
+		extraColumn: table.storage.extraColumn,
+		shapes,
+	};
 	for (let next = pending.pop(); next; next = pending.pop()) {
-		shapes[next.key] = sortedByName(next.attributes).map((attribute) => ({
+		shapes[next.key] = next.describe();
+	}
+	return contract;
+}
+
+/**
+ * What a table contributes wherever it appears, on its own or embedded in another table: an
+ * embedded record decodes and encodes with the same model.
+ * @param {IRTable} table
+ * @param {(type: IRType) => object} reference
+ * @returns {object}
+ */
+function recordShape(table, reference) {
+	return {
+		primaryKey: table.primaryKey,
+		sealed: table.sealed,
+		attributes: sortedByName(table.attributes).map((attribute) => ({
 			name: attribute.name,
 			type: reference(attribute.type),
 			nullable: attribute.nullable,
-		}));
-	}
-	return {
-		database: table.database,
-		name: table.name,
-		primaryKey: table.primaryKey,
-		sealed: table.sealed,
-		versionColumn: table.storage.versionColumn,
-		extraColumn: table.storage.extraColumn,
-		attributes,
+			primaryKey: attribute.primaryKey,
+			indexed: attribute.indexed,
+			serverManaged: attribute.serverManaged,
+			computed: attribute.computed,
+		})),
 		relations: sortedByName(table.relations).map((relation) => ({
 			name: relation.name,
 			cardinality: relation.cardinality,
@@ -146,7 +165,6 @@ function tableContract(table, objectTypes, tablesByKey) {
 			to: relation.to ?? null,
 			target: relation.target,
 		})),
-		shapes,
 	};
 }
 

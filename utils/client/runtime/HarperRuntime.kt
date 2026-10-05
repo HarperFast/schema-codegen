@@ -127,8 +127,7 @@ public object HarperConverters {
 	public val long: HarperConverter<Long> = object : HarperConverter<Long> {
 		override fun decode(value: HarperValue): Long = when (value) {
 			is HarperValue.LongValue -> value.value
-			is HarperValue.DoubleValue ->
-				value.value.toLong().takeIf { it.toDouble() == value.value } ?: throw HarperValueMismatch("int", "double")
+			is HarperValue.DoubleValue -> exactLong(value.value) ?: throw HarperValueMismatch("int", "double")
 			else -> throw HarperValueMismatch("int", value.kindName)
 		}
 
@@ -192,8 +191,7 @@ public object HarperConverters {
 		override fun decode(value: HarperValue): BigInteger = when (value) {
 			is HarperValue.LongValue -> BigInteger.valueOf(value.value)
 			is HarperValue.DoubleValue ->
-				value.value.toLong().takeIf { it.toDouble() == value.value }?.let { BigInteger.valueOf(it) }
-					?: throw HarperValueMismatch("bigint", "double")
+				exactLong(value.value)?.let { BigInteger.valueOf(it) } ?: throw HarperValueMismatch("bigint", "double")
 			is HarperValue.StringValue -> value.value.toBigIntegerOrNull() ?: throw HarperValueMismatch("bigint", "string")
 			else -> throw HarperValueMismatch("bigint", value.kindName)
 		}
@@ -219,6 +217,10 @@ public object HarperConverters {
 
 		override fun encode(value: List<T>): HarperValue = HarperValue.ArrayValue(value.map { element.encode(it) })
 	}
+
+	/** `toLong()` saturates, and 2^63 saturates to a Long that reads back as the same Double. */
+	private fun exactLong(value: Double): Long? =
+		if (value >= -9.223372036854775808E18 && value < 9.223372036854775808E18 && value == Math.rint(value)) value.toLong() else null
 
 	private fun instantOfMillis(milliseconds: Double): Instant {
 		val seconds = Math.floorDiv(milliseconds.toLong(), 1000L)

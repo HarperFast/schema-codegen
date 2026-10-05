@@ -88,6 +88,14 @@ describe('emitKotlinModule', () => {
 		expect(models).toContain('import java.time.Instant\n');
 	});
 
+	it('keeps members from shadowing the runtime and generated types their bodies name', () => {
+		const weird = dataClass('Weird');
+		expect(weird).toContain('public val HarperConverters_2: List<String?>? = null,');
+		expect(weird).toContain('public val Address_2: Address? = null,');
+		expect(weird).toContain('put("Address", Address.encode(it))');
+		expect(models).toContain('public data class ModelsKtRecord(');
+	});
+
 	it('builds each list converter once, as a file-level value no member can shadow', () => {
 		expect(models).toContain(
 			'private val nullableIntListConverter = HarperConverters.list(HarperConverters.nullable(HarperConverters.int))\n',

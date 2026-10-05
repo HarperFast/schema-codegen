@@ -184,6 +184,10 @@ export const RESERVED_TYPE_NAMES = new Set([
 	...SWIFT_KEYWORDS,
 	...KOTLIN_KEYWORDS,
 	...RUNTIME_TYPE_NAMES,
+	// The JVM classes Kotlin compiles the generated files' top-level declarations into.
+	'HarperRuntimeKt',
+	'HarperSchemaKt',
+	'ModelsKt',
 	'actor',
 	'any',
 	'async',
@@ -271,6 +275,21 @@ export const RESERVED_MEMBER_NAMES = [
 ];
 
 /**
+ * The names no member generated for `ir` may take: the reserved members, plus every runtime and
+ * generated type, which member bodies refer to by name and a same-named member would shadow.
+ * @param {{ tables: { typeName: string }[], types: { typeName: string }[] }} ir
+ * @returns {string[]}
+ */
+export function reservedMemberNames(ir) {
+	return [
+		...RESERVED_MEMBER_NAMES,
+		...RUNTIME_TYPE_NAMES,
+		...ir.tables.map((table) => table.typeName),
+		...ir.types.map((type) => type.typeName),
+	];
+}
+
+/**
  * Converts any schema name into an identifier valid in Swift, Kotlin and TypeScript: kebab-case
  * becomes camelCase, every other character outside `[A-Za-z0-9_]` becomes `_`, and a leading
  * digit (or an empty name) gains a `_` prefix. Unlike `toIdentifier`, `$` is not kept: neither
@@ -296,13 +315,6 @@ export function toCodeIdentifier(name) {
 export function createNameAllocator(reserved = []) {
 	const claimed = new Set(reserved);
 	return {
-		/**
-		 * @param {string} name
-		 * @returns {boolean}
-		 */
-		has(name) {
-			return claimed.has(name);
-		},
 		/**
 		 * Claims `name` exactly; returns false when it is already taken.
 		 * @param {string} name

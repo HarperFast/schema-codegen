@@ -451,7 +451,7 @@ function containsBlob(type, objectTypes, tablesByKey, visiting = new Set()) {
  * @param {IRDiagnostic[]} diagnostics
  * @returns {IRProjections}
  */
-function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
+export function projectionsOf(table, objectTypes, tablesByKey, diagnostics) {
 	const blobBearing = new Set(
 		table.attributes
 			.filter((attribute) => containsBlob(attribute.type, objectTypes, tablesByKey))

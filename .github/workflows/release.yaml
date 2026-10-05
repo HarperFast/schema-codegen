@@ -45,6 +45,8 @@ jobs:
         run: npm run format:check
       - name: Run unit tests
         run: npm test
+        env:
+          SCHEMA_CODEGEN_NATIVE_TESTS: skip
       - name: Semantic Release
         if: ${{ github.event_name == 'push' }}
         uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0

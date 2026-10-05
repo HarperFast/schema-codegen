@@ -157,8 +157,31 @@ describe('assertSchemaIR', () => {
 		],
 		[
 			'a table hash that does not match the table',
-			(ir) => (ir.tables[0].attributes[1].nullable = !ir.tables[0].attributes[1].nullable),
+			(ir) => (ir.tables[0].attributes[1].type = { kind: 'scalar', scalar: 'ID' }),
 			/tables\[0\]\.hash: does not match the table/,
+		],
+		[
+			'a reserved type name',
+			(ir) => (ir.tables[0].typeName = 'HarperValue'),
+			/"HarperValue" is reserved/,
+		],
+		[
+			'a read-only flag that contradicts the attribute',
+			(ir) => {
+				const order = ir.tables.find((/** @type {any} */ t) => t.name === 'Order');
+				order.attributes.find((/** @type {any} */ a) => a.computed).readOnly = false;
+			},
+			/readOnly: must hold exactly for server-managed and computed attributes/,
+		],
+		[
+			'an affinity that contradicts the attribute type',
+			(ir) => (ir.tables[0].storage.columns[0].affinity = 'INTEGER'),
+			/affinity: does not match the attribute type/,
+		],
+		[
+			'projections that do not follow from the attributes',
+			(ir) => ir.tables[0].projections.insert.pop(),
+			/projections: do not follow from the attributes/,
 		],
 		[
 			'a schema hash that does not match the tables',

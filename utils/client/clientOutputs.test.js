@@ -92,6 +92,48 @@ describe('client outputs', () => {
 		expect(all.filter((file) => file.endsWith('.tmp'))).toEqual([]);
 	});
 
+	it('restores the files already moved into place when a later move fails', () => {
+		const outputs = renderClientOutputs(ir, options());
+		publishClientOutputs(outputs);
+		const before = outputs.map((output) => fs.readFileSync(output.path, 'utf8'));
+		const changed = renderClientOutputs(
+			buildSchemaIR({ tables: spikeTables().slice(0, 1), generator: 'test' }),
+			options(),
+		);
+		const renameSync = fs.renameSync;
+		let renames = 0;
+		vi.spyOn(fs, 'renameSync').mockImplementation((...args) => {
+			if (++renames === 3) {
+				throw Object.assign(new Error('cross-device link not permitted'), { code: 'EXDEV' });
+			}
+			return renameSync(...args);
+		});
+		expect(() => publishClientOutputs(changed)).toThrow(/cross-device/);
+		vi.restoreAllMocks();
+		expect(outputs.map((output) => fs.readFileSync(output.path, 'utf8'))).toEqual(before);
+		const all = /** @type {string[]} */ (fs.readdirSync(directory, { recursive: true }));
+		expect(all.filter((file) => file.endsWith('.tmp'))).toEqual([]);
+	});
+
+	it('skips build folders and unreadable files when looking for stale sources', () => {
+		const outputs = renderClientOutputs(ir, options());
+		publishClientOutputs(outputs);
+		const packageDirectory = path.join(directory, 'ios', 'Models');
+		const runtime = fs.readFileSync(
+			path.join(packageDirectory, 'Sources', 'HarperModels', 'HarperRuntime.swift'),
+		);
+		for (const folder of ['.build/debug', 'build/out']) {
+			fs.mkdirSync(path.join(packageDirectory, folder), { recursive: true });
+			fs.writeFileSync(path.join(packageDirectory, folder, 'Copied.swift'), runtime);
+		}
+		expect(findStaleGeneratedFiles(packageDirectory, outputs)).toEqual([]);
+		fs.writeFileSync(path.join(packageDirectory, 'Sources', 'Locked.swift'), runtime);
+		vi.spyOn(fs, 'openSync').mockImplementation(() => {
+			throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+		});
+		expect(findStaleGeneratedFiles(packageDirectory, outputs)).toEqual([]);
+	});
+
 	it('leaves no temporary files behind', () => {
 		publishClientOutputs(renderClientOutputs(ir, options()));
 		const all = /** @type {string[]} */ (fs.readdirSync(directory, { recursive: true }));

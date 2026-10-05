@@ -1,5 +1,8 @@
+import { affinityOf, projectionsOf } from './buildSchemaIR.js';
+import { canonicalJSON } from './canonicalHash.js';
 import { hashContracts, hashProfile } from './contractHash.js';
 import { IR_VERSION, SCALAR_TYPES } from './irConstants.js';
+import { RESERVED_TYPE_NAMES } from './naming.js';
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -57,6 +60,8 @@ export function assertSchemaIR(ir) {
 	const claimTypeName = (path, typeName) => {
 		if (typeof typeName !== 'string' || !IDENTIFIER.test(typeName))
 			fail(path, 'expected an identifier');
+		if (RESERVED_TYPE_NAMES.has(/** @type {string} */ (typeName)))
+			fail(path, `"${typeName}" is reserved`);
 		if (claimed.has(typeName)) fail(path, `type name "${typeName}" is used twice`);
 		claimed.add(typeName);
 	};
@@ -247,6 +252,26 @@ export function assertSchemaIR(ir) {
 			listed.add(key);
 			checkScope(fail, `${at}.scope`, entry.scope, table);
 		});
+	});
+
+	const objectTypes = new Map(root.types.map((/** @type {any} */ type) => [type.name, type]));
+	root.tables.forEach((/** @type {any} */ table, /** @type {number} */ index) => {
+		const path = `$.tables[${index}]`;
+		table.attributes.forEach((/** @type {any} */ attribute, /** @type {number} */ at) => {
+			if (attribute.readOnly !== (attribute.serverManaged !== null || attribute.computed !== null))
+				fail(
+					`${path}.attributes[${at}].readOnly`,
+					'must hold exactly for server-managed and computed attributes',
+				);
+			if (table.storage.columns[at].affinity !== affinityOf(attribute.type))
+				fail(`${path}.storage.columns[${at}].affinity`, 'does not match the attribute type');
+		});
+		if (
+			canonicalJSON(table.projections) !==
+			canonicalJSON(projectionsOf(table, objectTypes, tablesByKey, []))
+		) {
+			fail(`${path}.projections`, 'do not follow from the attributes');
+		}
 	});
 
 	const { tableHashes, schemaHash } = hashContracts(root.tables, root.types);

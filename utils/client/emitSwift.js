@@ -6,7 +6,7 @@ import {
 	recursiveValueEdges,
 	swiftString,
 } from './emitSupport.js';
-import { allocateMemberNames, escapeSwiftIdentifier, RESERVED_MEMBER_NAMES } from './naming.js';
+import { allocateMemberNames, escapeSwiftIdentifier, reservedMemberNames } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
 const SWIFT_TYPES = /** @type {Record<string, string>} */ ({
@@ -51,6 +51,7 @@ const MODULE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * @property {Map<string, IRObjectType>} typesByName
  * @property {Map<string, IRTable>} tablesByKey
  * @property {Set<string>} boxedEdges
+ * @property {string[]} reservedMembers
  */
 
 /**
@@ -75,6 +76,7 @@ export function emitSwiftPackage(ir, { module = 'HarperModels' } = {}) {
 		typesByName: new Map(ir.types.map((type) => [type.name, type])),
 		tablesByKey: new Map(ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table])),
 		boxedEdges: recursiveValueEdges(ir),
+		reservedMembers: reservedMemberNames(ir),
 	};
 	const header = generatedHeader(ir);
 	const sources = `Sources/${module}`;
@@ -236,7 +238,7 @@ function tableModel(table, context) {
 	const typeName = table.typeName;
 	const names = allocateMemberNames(
 		table.attributes.map((attribute) => attribute.name),
-		RESERVED_MEMBER_NAMES,
+		context.reservedMembers,
 	);
 	const identifierOf = (/** @type {string} */ raw) => /** @type {string} */ (names.get(raw));
 	const attributesByName = new Map(
@@ -403,7 +405,7 @@ function tableModel(table, context) {
 function objectModel(type, context) {
 	const names = allocateMemberNames(
 		type.attributes.map((attribute) => attribute.name),
-		RESERVED_MEMBER_NAMES,
+		context.reservedMembers,
 	);
 	const properties = type.attributes.map((attribute) =>
 		propertyOf(
@@ -482,7 +484,7 @@ function tableSchemaLiteral(table) {
 function schemaSource(ir) {
 	const profileNames = allocateMemberNames(
 		ir.profiles.map((profile) => profile.name),
-		PROFILE_RESERVED,
+		[...PROFILE_RESERVED, ...reservedMemberNames(ir)],
 	);
 	const constantOf = (/** @type {IRProfile} */ profile) =>
 		escapeSwiftIdentifier(/** @type {string} */ (profileNames.get(profile.name)));

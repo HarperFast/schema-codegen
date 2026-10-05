@@ -140,6 +140,17 @@ export function adversarialTables() {
 				{ name: 'in', type: 'Boolean' },
 				{ name: 'o"conn\\or $x', type: 'String' },
 				{ name: '9lives', type: 'Boolean', nullable: false },
+				{ name: 'HarperConverters', type: 'array', elements: { type: 'String' } },
+				{ name: 'Address', type: 'Address' },
+			],
+		},
+		{
+			tableName: 'ModelsKt',
+			databaseName: 'data',
+			primaryKey: 'id',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'tags', type: 'array', elements: { type: 'String' } },
 			],
 		},
 		{

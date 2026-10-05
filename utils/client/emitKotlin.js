@@ -6,7 +6,7 @@ import {
 	createNameAllocator,
 	escapeKotlinEnumEntry,
 	escapeKotlinIdentifier,
-	RESERVED_MEMBER_NAMES,
+	reservedMemberNames,
 } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
@@ -69,6 +69,7 @@ const FILE_SUPPRESSIONS =
  * @property {Map<string, IRTable>} tablesByKey
  * @property {Map<string, string>} converters list converter expression → the file-level value holding it
  * @property {ReturnType<typeof createNameAllocator>} converterNames
+ * @property {string[]} reservedMembers
  */
 
 /**
@@ -89,6 +90,7 @@ export function emitKotlinModule(ir, { packageName = 'harper.models' } = {}) {
 		tablesByKey: new Map(ir.tables.map((table) => [`${table.database}\u0000${table.name}`, table])),
 		converters: new Map(),
 		converterNames: createNameAllocator(fileScopeNames(ir)),
+		reservedMembers: reservedMemberNames(ir),
 	};
 	const packageLine = `package ${segments.map(escapeKotlinIdentifier).join('.')}\n`;
 	const header = generatedHeader(ir) + FILE_SUPPRESSIONS + '\n';
@@ -151,12 +153,12 @@ function kotlinType(type, context) {
  * @returns {Set<string>}
  */
 function fileScopeNames(ir) {
-	const names = new Set([...RESERVED_MEMBER_NAMES, ...GENERATED_LOCALS]);
+	const reserved = reservedMemberNames(ir);
+	const names = new Set([...reserved, ...GENERATED_LOCALS]);
 	for (const owner of [...ir.tables, ...ir.types]) {
-		names.add(owner.typeName);
 		const members = allocateMemberNames(
 			owner.attributes.map((attribute) => attribute.name),
-			RESERVED_MEMBER_NAMES,
+			reserved,
 		);
 		for (const member of members.values()) names.add(member);
 	}
@@ -365,7 +367,7 @@ function tableModel(table, context) {
 	const className = table.typeName;
 	const names = allocateMemberNames(
 		table.attributes.map((attribute) => attribute.name),
-		RESERVED_MEMBER_NAMES,
+		context.reservedMembers,
 	);
 	const identifierOf = (/** @type {string} */ raw) => /** @type {string} */ (names.get(raw));
 	const attributesByName = new Map(
@@ -561,7 +563,7 @@ function objectModel(type, context) {
 	const className = type.typeName;
 	const names = allocateMemberNames(
 		type.attributes.map((attribute) => attribute.name),
-		RESERVED_MEMBER_NAMES,
+		context.reservedMembers,
 	);
 	const properties = type.attributes.map((attribute) =>
 		propertyOf(
@@ -656,7 +658,7 @@ function tableSchemaLiteral(table) {
 function schemaSource(ir) {
 	const profileNames = allocateMemberNames(
 		ir.profiles.map((profile) => profile.name),
-		[],
+		reservedMemberNames(ir),
 	);
 	const constantOf = (/** @type {IRProfile} */ profile) =>
 		escapeKotlinIdentifier(/** @type {string} */ (profileNames.get(profile.name)));

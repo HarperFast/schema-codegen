@@ -15,18 +15,27 @@ export function createRegenerationScheduler(run, { delayMs = 100, onError }) {
 	const drain = async () => {
 		timer = null;
 		running = true;
+		/** @type {{ error: unknown } | undefined} */
+		let reporterFailure;
 		try {
 			while (requested && !closed) {
 				requested = false;
 				try {
 					await run();
 				} catch (error) {
-					onError(error);
+					try {
+						onError(error);
+					} catch (failure) {
+						reporterFailure ??= { error: failure };
+					}
 				}
 			}
 		} finally {
 			running = false;
 		}
+		// Raised once the queued runs are served, so a broken reporter still surfaces (as an
+		// unhandled rejection the host logs) without stranding requests made in the meantime.
+		if (reporterFailure) throw reporterFailure.error;
 	};
 
 	return {

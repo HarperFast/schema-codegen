@@ -91,13 +91,22 @@ export function writeIfChanged(filePath, content) {
 }
 
 /**
+ * Follows symlinks at the final path component, including one whose target does not exist yet,
+ * as a plain write would.
  * @param {string} filePath
  * @returns {string}
  */
 function resolveTarget(filePath) {
-	try {
-		return fs.realpathSync(filePath);
-	} catch {
-		return filePath;
+	let target = filePath;
+	for (let hops = 0; hops < 40; hops++) {
+		/** @type {string} */
+		let link;
+		try {
+			link = fs.readlinkSync(target);
+		} catch {
+			return target;
+		}
+		target = path.resolve(path.dirname(target), link);
 	}
+	return target;
 }

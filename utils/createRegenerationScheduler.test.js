@@ -97,14 +97,22 @@ describe('createRegenerationScheduler', () => {
 		expect(maxActive).toBe(1);
 	});
 
-	it('surfaces a throwing error reporter and keeps serving requests', async () => {
+	it('serves requests queued behind a run whose failure the reporter could not report, then surfaces the reporter failure', async () => {
 		/** @type {(() => Promise<void>)[]} */
 		const timers = [];
 		vi.spyOn(globalThis, 'setTimeout').mockImplementation(
 			/** @type {any} */ ((/** @type {() => Promise<void>} */ callback) => timers.push(callback)),
 		);
-		const run = vi.fn().mockRejectedValue(new Error('boom'));
-		const scheduler = createRegenerationScheduler(run, {
+		/** @type {ReturnType<typeof createRegenerationScheduler>} */
+		let scheduler;
+		const run = vi
+			.fn()
+			.mockImplementationOnce(async () => {
+				scheduler.schedule();
+				throw new Error('boom');
+			})
+			.mockResolvedValue(undefined);
+		scheduler = createRegenerationScheduler(run, {
 			delayMs: 10,
 			onError: () => {
 				throw new Error('reporter');
@@ -112,6 +120,7 @@ describe('createRegenerationScheduler', () => {
 		});
 		scheduler.schedule();
 		await expect(timers[0]()).rejects.toThrow('reporter');
+		expect(run).toHaveBeenCalledTimes(2);
 		scheduler.schedule();
 		expect(timers).toHaveLength(2);
 	});

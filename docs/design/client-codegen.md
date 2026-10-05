@@ -195,7 +195,8 @@ timestamps):
   emitter does), singularized table name, characters outside `[A-Za-z0-9_]` sanitized, leading
   digit prefixed. Allocation covers tables and nested types in one namespace, avoids a reserved set
   (Swift and Kotlin keywords, the standard types the generated code names, the generated runtime's
-  `Harper*` names, `New`, `Patch`), and resolves collisions by appending `Record`, then `_2`,
+  `Harper*` names, `New`, `Patch`, and the JVM classes Kotlin compiles the generated files'
+  top-level declarations into, such as `ModelsKt`), and resolves collisions by appending `Record`, then `_2`,
   `_3`…. A table or nested type keeps the name it had in the previous IR while that name is still
   valid and unclaimed, so adding a colliding table never renames an existing public type; the
   diff reports `typeName` changes as source changes.
@@ -278,9 +279,10 @@ Per table (Swift `struct` / Kotlin `data class`), named `typeName`:
 - property names: attribute names that are already identifiers are kept verbatim (claimed first);
   others are sanitized like table names; keywords are escaped with backticks; names that collide
   with the generated members (`_version`, `_extra`, `New`, `Patch`, `Field`, `clear`,
-  `encodeRow`, `encodeUpsertRow`, `harperValue`, `hashValue`, `Companion`) or with each other get
-  a numeric suffix, rechecked against every claimed name. The raw attribute name is always what
-  goes on the row;
+  `encodeRow`, `encodeUpsertRow`, `harperValue`, `hashValue`, `Companion`), with a runtime or
+  generated type name (member bodies name those types, and a same-named member would shadow
+  them), or with each other get a numeric suffix, rechecked against every claimed name. The raw
+  attribute name is always what goes on the row;
 - nested object types get the same treatment minus `_version`, `New` and `Patch`, and always keep
   `_extra` (nested sealing is not enforced server-side). A nested type reachable from itself by
   value (not through an array) cannot be a Swift struct; that edge is boxed in Swift as
@@ -350,8 +352,9 @@ limit left on; it is loaded only when `syncProfiles` is configured.
 - **Contract**: per table — database, name, PK, sealed, the storage metadata column names, and per
   attribute (sorted by name): name, type (object types and embedded tables by name), `nullable`,
   PK, indexed, server-managed, computed `{from, version}`; the shapes of every object type and
-  embedded table reachable from the table, each listed once by name, so a nested change reaches
-  every table that carries it while shared and recursive types hash in linear time;
+  embedded table reachable from the table (an embedded table with its sealing, attributes and
+  relations, since the same model decodes it), each listed once by name, so a nested change
+  reaches every table that carries it while shared and recursive types hash in linear time;
   relations by name/cardinality/key/target. Excluded: descriptions, `typeName`, attribute order,
   profile membership — none of them changes what a device stores or sends.
 - `tables[].hash` = SHA-256 of the canonical JSON (sorted keys) of the table contract;
@@ -422,13 +425,16 @@ Component options (dev mode, flat like the existing `schemaTypes`/`jsdoc`):
   delay installs nothing.
 - Everything is rendered and validated in memory before any write. Every changed file is then
   staged beside its target before any is renamed into place, so a failed write (a full disk)
-  publishes nothing; generated sources are renamed before the IR file, which is the baseline the
-  next run diffs against. Renames resolve symlinks (the link survives), and a target Windows holds
+  publishes nothing, and a failed rename restores the files already replaced from the previous
+  contents; generated sources are renamed before the IR file, which is the baseline the next run
+  diffs against. Renames resolve symlinks (the link survives), and a target Windows holds
   open is overwritten in place. Errors (YAML, IR validation, I/O) are logged at the component
   boundary and leave the previous outputs in place; they never take Harper down.
 - An IR read from a file is validated before use, including its hashes: each is recomputed from
   the contents, so a hand-merged IR that kept an old hash is refused rather than diffed as
-  unchanged.
+  unchanged. The fields derived from the contract (`readOnly`, the projections, column
+  affinities) must match what the builder derives, and type names may not be reserved, so an
+  edited IR cannot emit a model that disagrees with its own hash.
 - `swiftModule` must be a Swift identifier and `kotlinPackage` dot-separated identifiers (keyword
   segments are backtick-escaped in source), so neither can traverse out of the output directory.
   Every string emitted into source is escaped for the target language (Kotlin `$` included).

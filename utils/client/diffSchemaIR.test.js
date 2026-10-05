@@ -446,6 +446,49 @@ describe('diffSchemaIR', () => {
 		});
 	});
 
+	it('itemizes changes that alter a contract without breaking older clients', () => {
+		const timestamps = diffAfter((tables) => {
+			const createdAt = find(tables, 'Customer').attributes.find(
+				(/** @type {any} */ attribute) => attribute.name === 'createdAt',
+			);
+			createdAt.assignCreatedTime = false;
+			createdAt.assignUpdatedTime = true;
+		});
+		expect(timestamps.changes).toEqual([
+			expect.objectContaining({ kind: 'serverManagedChanged', attribute: 'createdAt', breaks: [] }),
+		]);
+		const nested = diffAfter((_, types) =>
+			types.get('Geo').attributes.push({ name: 'alt', type: 'Float' }),
+		);
+		expect(nested.changes).toEqual([
+			expect.objectContaining({
+				kind: 'nestedAttributeAdded',
+				path: 'address.geo.alt',
+				breaks: [],
+			}),
+		]);
+		const snapshot = {
+			tableName: 'Snapshot',
+			databaseName: 'coverage',
+			primaryKey: 'id',
+			attributes: [
+				{ name: 'id', type: 'ID', isPrimaryKey: true },
+				{ name: 'buyer', type: 'Customer' },
+			],
+		};
+		const embedded = diffSchemaIR(
+			irOf((tables) => tables.push({ ...snapshot })),
+			irOf((tables) => {
+				tables.push({ ...snapshot });
+				find(tables, 'Customer').attributes.push({ name: 'nickname', type: 'String' });
+			}),
+		);
+		expect(embedded.changes.map((change) => [change.table, change.kind])).toEqual([
+			['Customer', 'attributeAdded'],
+			['Snapshot', 'contractChanged'],
+		]);
+	});
+
 	it('keeps tables whose names contain dots apart', () => {
 		/** @param {string} database @param {string} name */
 		const only = (database, name) =>

@@ -48,6 +48,19 @@ describe('writeIfChanged', () => {
 		},
 	);
 
+	it.skipIf(process.platform === 'win32')(
+		'creates the target of a dangling symlink and keeps the link',
+		() => {
+			const target = path.join(directory, 'shared', 'types.ts');
+			fs.mkdirSync(path.dirname(target));
+			const link = path.join(directory, 'types.ts');
+			fs.symlinkSync(target, link);
+			expect(writeIfChanged(link, 'first')).toBe(true);
+			expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+			expect(fs.readFileSync(target, 'utf8')).toBe('first');
+		},
+	);
+
 	it('overwrites in place when the target is locked against renames', () => {
 		const file = path.join(directory, 'types.ts');
 		fs.writeFileSync(file, 'previous');

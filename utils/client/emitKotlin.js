@@ -10,7 +10,7 @@ import {
 } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
-const SCALAR_TYPES = /** @type {Record<string, string>} */ ({
+const KOTLIN_TYPES = /** @type {Record<string, string>} */ ({
 	ID: 'String',
 	String: 'String',
 	Int: 'Int',
@@ -128,7 +128,7 @@ plugins {
 function kotlinType(type, context) {
 	switch (type.kind) {
 		case 'scalar':
-			return SCALAR_TYPES[type.scalar];
+			return KOTLIN_TYPES[type.scalar];
 		case 'array':
 			return `List<${kotlinType(type.element, context)}${type.elementNullable ? '?' : ''}>`;
 		case 'object':

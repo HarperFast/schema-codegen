@@ -14,7 +14,7 @@ import {
 } from './naming.js';
 import { assertSchemaIR } from './validateSchemaIR.js';
 
-const SCALAR_TYPES = /** @type {Record<string, string>} */ ({
+const SWIFT_TYPES = /** @type {Record<string, string>} */ ({
 	ID: 'String',
 	String: 'String',
 	Int: 'Int',
@@ -125,7 +125,7 @@ let package = Package(
 function swiftType(type, context, boxed = false) {
 	switch (type.kind) {
 		case 'scalar':
-			return SCALAR_TYPES[type.scalar];
+			return SWIFT_TYPES[type.scalar];
 		case 'array':
 			return `[${swiftType(type.element, context)}${type.elementNullable ? '?' : ''}]`;
 		case 'object': {

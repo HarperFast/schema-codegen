@@ -16,13 +16,23 @@
 		"type": "git",
 		"url": "git+https://github.com/HarperFast/schema-codegen.git"
 	},
+	"bin": {
+		"schema-codegen": "bin/schema-codegen.js"
+	},
 	"files": [
 		"extensionModule.js",
 		"config.yaml",
+		"index.js",
+		"bin/",
 		"utils/",
 		"!utils/**/*.test.js"
 	],
 	"type": "module",
+	"main": "./index.js",
+	"exports": {
+		".": "./index.js",
+		"./package.json": "./package.json"
+	},
 	"scripts": {
 		"commitlint": "commitlint --edit",
 		"format:check": "oxfmt --check",
@@ -33,6 +43,9 @@
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"yaml": "^2.9.1"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^21.0.0",

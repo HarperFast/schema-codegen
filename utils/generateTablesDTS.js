@@ -1,8 +1,7 @@
 /** @import { TableMeta } from './tableMeta.js' */
-import fs from 'node:fs';
 import path from 'node:path';
-import { getLogger } from './logger.js';
 import { safeKey } from './safeKey.js';
+import { writeIfChanged } from './writeIfChanged.js';
 
 /**
  * @param {string} globalTypesPath
@@ -65,12 +64,5 @@ export function generateTablesDTS(globalTypesPath, schemaTypesPath, tables, modu
 	content += `\t};\n`;
 
 	content += `}\n`;
-	const outPath = globalTypesPath;
-	const dir = path.dirname(outPath);
-	fs.mkdirSync(dir, { recursive: true });
-	const existingContent = fs.existsSync(outPath) && fs.readFileSync(outPath, 'utf8');
-	if (existingContent !== content) {
-		fs.writeFileSync(outPath, content, 'utf8');
-		getLogger()?.debug?.(`Updated types in ${outPath}`);
-	}
+	writeIfChanged(globalTypesPath, content);
 }

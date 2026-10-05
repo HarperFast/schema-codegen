@@ -236,15 +236,17 @@ function describeTable(source, context) {
 					version: attribute.version == null ? null : String(attribute.version),
 				}
 			: null;
+		const type = toType(attribute, context, where);
+		const blob = !isPrimaryKey && type.kind === 'scalar' && type.scalar === 'Blob';
 		const nullable =
-			computed || serverManaged === 'derived'
+			computed || serverManaged === 'derived' || blob
 				? true
 				: isPrimaryKey || serverManaged
 					? false
 					: isNullable({ ...attribute, isPrimaryKey: false });
 		attributes.push({
 			name: attribute.name,
-			type: toType(attribute, context, where),
+			type,
 			nullable,
 			primaryKey: isPrimaryKey,
 			indexed: Boolean(attribute.indexed),

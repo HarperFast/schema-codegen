@@ -555,7 +555,7 @@ function allocateTypeNames(tables, types, previous) {
  * @param {Map<string, IRObjectType>} objectTypes
  * @returns {object}
  */
-export function tableContract(table, objectTypes) {
+function tableContract(table, objectTypes) {
 	return {
 		database: table.database,
 		name: table.name,

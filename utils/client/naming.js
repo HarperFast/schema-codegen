@@ -2,7 +2,7 @@
  * Swift words that must be backtick-escaped to be used as a property name. Contextual keywords
  * (`get`, `set`, `some`, `async`, …) are valid member names and are left out.
  */
-export const SWIFT_KEYWORDS = new Set([
+const SWIFT_KEYWORDS = new Set([
 	'Any',
 	'Protocol',
 	'Self',
@@ -63,7 +63,7 @@ export const SWIFT_KEYWORDS = new Set([
 ]);
 
 /** Kotlin hard keywords: valid identifiers only when backtick-escaped. */
-export const KOTLIN_KEYWORDS = new Set([
+const KOTLIN_KEYWORDS = new Set([
 	'as',
 	'break',
 	'class',
@@ -99,7 +99,7 @@ export const KOTLIN_KEYWORDS = new Set([
  * entry the parser can read them as modifiers (`value("value")` fails to parse), so enum entries
  * escape them too.
  */
-export const KOTLIN_SOFT_KEYWORDS = new Set([
+const KOTLIN_SOFT_KEYWORDS = new Set([
 	'abstract',
 	'actual',
 	'annotation',
@@ -150,7 +150,7 @@ export const KOTLIN_SOFT_KEYWORDS = new Set([
 ]);
 
 /** Names the generated runtime and emitted code declare at the top level of the package. */
-export const RUNTIME_TYPE_NAMES = [
+const RUNTIME_TYPE_NAMES = [
 	'HarperAffinity',
 	'HarperBigInt',
 	'HarperBox',

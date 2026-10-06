@@ -61,7 +61,7 @@ expectThrows("a Long at 2^63", { try coverage_Customer(row: ["id": .string("c1")
 let customerJSON = #"""
 {"id":"c1","name":"Ada","email":"ada@example.com","createdAt":"2026-10-05T12:34:56.789Z","updatedAt":1791203696000,
  "address":{"street":"1 Main","city":"Denver","geo":{"lat":39.7,"lng":-104.9},"unit":"4B"},
- "tags":["a","b"],"scores":[1,null,3],"big":"123456789012345678901234567890","raw":"AQID",
+ "tags":["a","b"],"scores":[1,null,3],"big":"123456789012345678901234567890","raw":"AQID","files":["AQID","BAU="],
  "meta":{"nested":[true,1,"x",null]},"visits":9007199254740991,"active":1,
  "tree":{"label":"root","parent":{"label":"up"},"children":[{"label":"leaf"}]},
  "purchases":[{"id":1}],"loyalty":"gold"}
@@ -74,6 +74,7 @@ check(customer.address?._extra == ["unit": .string("4B")], "nested types keep un
 check(customer.tags == ["a", "b"] && customer.scores == [1, nil, 3], "arrays with and without nullable elements")
 check(customer.big?.decimalString == "123456789012345678901234567890" && customer.big?.int64Value == nil, "BigInt beyond Int64")
 check(customer.raw == Data([1, 2, 3]), "Bytes from base64")
+check(customer.files == [Data([1, 2, 3]), Data([4, 5])], "lists of Bytes")
 check(customer.visits == 9007199254740991, "Long at the 2^53 bound")
 check(customer.active == true, "Boolean from SQLite's 0/1")
 check(customer.tree?.parent?.value.label == "up" && customer.tree?.children?.first?.label == "leaf", "boxed recursion")

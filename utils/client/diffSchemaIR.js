@@ -270,6 +270,15 @@ function diffTable(before, after, fromTypes, toTypes, changes, delta) {
 				: `${name} is no longer @sealed: clients without an overflow bag drop undeclared attributes on PUT`,
 		);
 	}
+	if ((before.projections.upsert === null) !== (after.projections.upsert === null)) {
+		record(
+			'replacementChanged',
+			after.projections.upsert === null ? ['write'] : [],
+			after.projections.upsert === null
+				? `${name} no longer supports full replacement: an older client's PUT erases Blob content that sync does not deliver`
+				: `${name} supports full replacement again`,
+		);
+	}
 
 	const beforeAttributes = new Map(
 		before.attributes.map((attribute) => [attribute.name, attribute]),

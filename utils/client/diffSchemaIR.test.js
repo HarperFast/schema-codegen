@@ -446,6 +446,37 @@ describe('diffSchemaIR', () => {
 		});
 	});
 
+	it('breaks writes when a table stops supporting full replacement', () => {
+		/** @param {any[]} tables */
+		const addBlob = (tables) =>
+			find(tables, 'Product').attributes.push({ name: 'manual', type: 'Blob' });
+		const added = diffAfter(addBlob);
+		expect(added.compatibility.write).toBe('breaking');
+		expect(added.changes).toEqual([
+			expect.objectContaining({ kind: 'replacementChanged', table: 'Product', breaks: ['write'] }),
+			expect.objectContaining({ kind: 'attributeAdded', attribute: 'manual', breaks: [] }),
+		]);
+		const nested = diffAfter((_, types) =>
+			types.get('Address').attributes.push({ name: 'photo', type: 'Blob' }),
+		);
+		expect(nested.changes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: 'replacementChanged',
+					table: 'Customer',
+					breaks: ['write'],
+				}),
+			]),
+		);
+		const removed = diffSchemaIR(irOf(addBlob), irOf());
+		expect(removed.compatibility.write).toBe('additive');
+		expect(removed.changes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ kind: 'replacementChanged', table: 'Product', breaks: [] }),
+			]),
+		);
+	});
+
 	it('itemizes changes that alter a contract without breaking older clients', () => {
 		const timestamps = diffAfter((tables) => {
 			const createdAt = find(tables, 'Customer').attributes.find(

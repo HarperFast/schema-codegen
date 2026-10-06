@@ -249,9 +249,9 @@ Reasons for the non-obvious rows:
   Projections). A typed blob reference replaces this when blob sync is designed.
 - **Any → `HarperValue`**: a closed JSON-like enum (`null/bool/int/double/string/bytes/array/
 object`) that is `Sendable`, `Hashable` and (Swift) `Codable`, so models stay value types.
-- **Bytes in Kotlin**: `ByteArray` has identity equality, so generated data classes that hold one
-  directly override `equals`/`hashCode` with content comparison; `HarperValue.BytesValue` compares
-  by content.
+- **Bytes in Kotlin**: `ByteArray` has identity equality, so generated data classes that hold
+  byte arrays, directly or in lists, override `equals`/`hashCode` with the runtime's
+  `HarperContent`, which compares them by content; `HarperValue.BytesValue` compares by content.
 
 ## Client model shape
 
@@ -393,6 +393,7 @@ limit left on; it is loaded only when `syncProfiles` is configured.
 | computed attribute or relationship added, table not sealed                                                                 | —                               | breaking (old model echoes it from `_extra` on `PUT`; `validate` rejects it) | — (add column)                           |
 | stored attribute turned into a relationship                                                                                | —                               | breaking (old writes send it)                                                | —                                        |
 | `sealed` changed                                                                                                           | —                               | breaking                                                                     | — (an orphaned `_extra` column is inert) |
+| full replacement became unsupported (`upsert` became `null`: a writable Blob added, in nested types too)                   | —                               | breaking (an old `PUT` erases Blob content that sync does not deliver)       | —                                        |
 | version/extra column relocated (attribute named `_version`/`_extra` added)                                                 | —                               | —                                                                            | breaking                                 |
 | nested object type: same rules, never sealed; each type pair is compared once per table, at the first path that reaches it |                                 |                                                                              |                                          |
 | an embedded table's change (reported for each table embedding it, beside its own changes)                                  | the embedded table's read break | the embedded table's write break                                             | —                                        |

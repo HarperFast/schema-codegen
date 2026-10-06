@@ -261,6 +261,21 @@ public fun <T : Any> HarperRow.harperOptional(attribute: String, type: String, c
 /** The entries whose keys the schema does not declare. */
 public fun HarperRow.harperExtra(declared: Set<String>): Map<String, HarperValue> = filterKeys { it !in declared }
 
+/** Equality for generated models: byte arrays compare by content, inside lists too, not by identity. */
+public object HarperContent {
+	public fun same(a: Any?, b: Any?): Boolean = when {
+		a is ByteArray && b is ByteArray -> a.contentEquals(b)
+		a is List<*> && b is List<*> -> a.size == b.size && a.indices.all { same(a[it], b[it]) }
+		else -> a == b
+	}
+
+	public fun hash(value: Any?): Int = when (value) {
+		is ByteArray -> value.contentHashCode()
+		is List<*> -> value.fold(1) { result, element -> 31 * result + hash(element) }
+		else -> value?.hashCode() ?: 0
+	}
+}
+
 /** The logical type of a stored column. */
 public enum class HarperColumnType { ID, STRING, INT, LONG, FLOAT, BIG_INT, BOOLEAN, DATE, BYTES, BLOB, ANY, ARRAY, OBJECT }
 

@@ -106,11 +106,13 @@ describe('emitKotlinModule', () => {
 		expect(models).not.toMatch(/\(HarperConverters\.list\(/);
 	});
 
-	it('compares ByteArray attributes by content', () => {
+	it('compares byte arrays by content, in lists too', () => {
 		const customer = dataClass('coverage_Customer');
 		expect(customer).toContain('override fun equals(other: Any?): Boolean {');
-		expect(customer).toContain('this.raw.contentEquals(other.raw)');
-		expect(customer).toContain('(this.raw?.contentHashCode() ?: 0)');
+		expect(customer).toContain('HarperContent.same(this.raw, other.raw)');
+		expect(customer).toContain('HarperContent.same(this.files, other.files)');
+		expect(customer).toContain('this.name == other.name');
+		expect(customer).toContain('HarperContent.hash(this.files)');
 		expect(dataClass('Product')).not.toContain('override fun equals');
 	});
 

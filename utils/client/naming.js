@@ -156,6 +156,7 @@ const RUNTIME_TYPE_NAMES = [
 	'HarperBox',
 	'HarperColumn',
 	'HarperColumnType',
+	'HarperContent',
 	'HarperConverter',
 	'HarperConverters',
 	'HarperDecodingError',

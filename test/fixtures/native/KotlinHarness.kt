@@ -63,6 +63,7 @@ fun main() {
 			"scores" to listOf(1, null, 3),
 			"big" to "123456789012345678901234567890",
 			"raw" to "AQID",
+			"files" to listOf("AQID", "BAU="),
 			"meta" to mapOf("nested" to listOf(true, 1, "x", null)),
 			"visits" to 9007199254740991L,
 			"active" to 1,
@@ -78,12 +79,13 @@ fun main() {
 	check(customer.tags == listOf("a", "b") && customer.scores == listOf(1, null, 3), "lists with and without nullable elements")
 	check(customer.big == BigInteger("123456789012345678901234567890"), "BigInt beyond Long")
 	check(customer.raw?.contentEquals(byteArrayOf(1, 2, 3)) == true, "Bytes from base64")
+	check(customer.files?.map { it?.toList() } == listOf(listOf<Byte>(1, 2, 3), listOf<Byte>(4, 5)), "lists of Bytes")
 	check(customer.visits == 9007199254740991L && customer.active == true, "Long and 0/1 booleans")
 	val tree = customer.tree
 	check(tree != null && tree.parent?.label == "up" && tree.children?.first()?.label == "leaf", "recursive nested types")
 	check(customer._extra == mapOf("loyalty" to HarperValue.StringValue("gold")), "relations are never extras")
 	val again = coverage_Customer.decode(customer.encodeRow())
-	check(again == customer && again.hashCode() == customer.hashCode(), "customer round trip compares ByteArray content")
+	check(again == customer && again.hashCode() == customer.hashCode(), "customer round trip compares ByteArray content, in lists too")
 
 	val injected = customer.copy(_extra = customer._extra + mapOf("createdAt" to HarperValue.DoubleValue(0.0), "purchases" to HarperValue.ArrayValue(emptyList())))
 	val upsert = injected.encodeUpsertRow()

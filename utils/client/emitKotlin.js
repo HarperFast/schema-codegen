@@ -251,7 +251,7 @@ function kdoc(lines, indent) {
  * @property {string} type the property type, nullability included
  * @property {boolean} optional
  * @property {string} converter
- * @property {boolean} bytes holds a ByteArray directly
+ * @property {boolean} bytes holds byte arrays itself, directly or in lists
  */
 
 /**
@@ -269,8 +269,18 @@ function propertyOf(attribute, identifier, context, optional) {
 		type: optional ? `${base}?` : base,
 		optional,
 		converter: converterOf(attribute.type, context),
-		bytes: base === 'ByteArray',
+		bytes: holdsBytes(attribute.type),
 	};
+}
+
+/**
+ * Generated classes compare their own byte arrays, so only bytes outside them count.
+ * @param {IRType} type
+ * @returns {boolean}
+ */
+function holdsBytes(type) {
+	if (type.kind === 'scalar') return type.scalar === 'Bytes';
+	return type.kind === 'array' && holdsBytes(type.element);
 }
 
 /**
@@ -304,7 +314,7 @@ function encodeStatements(properties, receiver, indent) {
 }
 
 /**
- * Data classes compare arrays by identity, so a class holding a ByteArray gets content equality.
+ * Data classes compare arrays by identity, so a class holding byte arrays gets content equality.
  * @param {string} className
  * @param {KotlinProperty[]} properties including the trailing system properties
  * @param {string} indent
@@ -312,18 +322,14 @@ function encodeStatements(properties, receiver, indent) {
  */
 function contentEquality(className, properties, indent) {
 	if (!properties.some((property) => property.bytes)) return '';
-	const comparisons = properties.map((property) => {
-		const ours = `this.${property.name}`;
-		const theirs = `other.${property.name}`;
-		if (!property.bytes) return `${ours} == ${theirs}`;
-		return property.optional
-			? `(if (${ours} == null) ${theirs} == null else ${theirs} != null && ${ours}.contentEquals(${theirs}))`
-			: `${ours}.contentEquals(${theirs})`;
-	});
+	const comparisons = properties.map((property) =>
+		property.bytes
+			? `HarperContent.same(this.${property.name}, other.${property.name})`
+			: `this.${property.name} == other.${property.name}`,
+	);
 	const hashes = properties.map((property) => {
 		const ours = `this.${property.name}`;
-		if (property.bytes)
-			return property.optional ? `(${ours}?.contentHashCode() ?: 0)` : `${ours}.contentHashCode()`;
+		if (property.bytes) return `HarperContent.hash(${ours})`;
 		return property.optional ? `(${ours}?.hashCode() ?: 0)` : `${ours}.hashCode()`;
 	});
 	let source = `\n${indent}override fun equals(other: Any?): Boolean {\n`;

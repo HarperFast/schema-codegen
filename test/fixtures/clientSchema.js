@@ -75,6 +75,7 @@ export function coverageTables() {
 				{ name: 'scores', type: 'array', elements: { type: 'Int' } },
 				{ name: 'big', type: 'BigInt' },
 				{ name: 'raw', type: 'Bytes' },
+				{ name: 'files', type: 'array', elements: { type: 'Bytes' } },
 				{ name: 'meta', type: 'Any' },
 				{ name: 'visits', type: 'Long' },
 				{ name: 'active', type: 'Boolean' },

@@ -2,7 +2,8 @@
 
 Status: design note for HarperFast/harper-client-sdk-spike#8 (M8 in the device-sync design,
 `docs/DESIGN.md` rev 3 in the spike repo). It is also the decision record the issue asks for:
-type-mapping and model-shape decisions are made here once and every emitter follows them.
+type-mapping and model-shape decisions are made here once and every emitter follows them. Issue numbers in this note (`#10`, `#18`, …) are issues in
+HarperFast/harper-client-sdk-spike, not in this repository.
 
 ## Goal
 

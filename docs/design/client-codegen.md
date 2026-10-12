@@ -57,7 +57,7 @@ schema covering every attribute kind:
 - **Live `Table.attributes` keep only the type name of a nested object** (`address: Address` →
   `{type: 'Address'}`; `[PurchaseLine!]!` → `elements: {type: 'PurchaseLine', nullable: false}`).
   Relationship attributes keep `relationship`, a non-enumerable `relationshipReference
-{database, table}` (GraphQL), and `definition`. `scope.resources.allTypes` in a component holds
+  {database, table}` (GraphQL), and `definition`. `scope.resources.allTypes` in a component holds
   every GraphQL type with its connected structure, and `scope.directory` is the application
   directory. `defineTable` relations carry `relationship` and a lazy `definition.tableClass`
   instead of `relationshipReference`.
@@ -77,7 +77,7 @@ schema covering every attribute kind:
 - Every live table has `tableName`, `databaseName`, `primaryKey`, `attributes`, `sealed` statics.
 - Node refuses to type-strip `.ts` files under `node_modules`, and this package is loaded from
   `node_modules` by Harper's component loader (`componentLoader.ts`: `join(componentDirectory,
-config.extensionModule)`); CI also tests Node 20. New modules therefore stay JavaScript with
+  config.extensionModule)`); CI also tests Node 20. New modules therefore stay JavaScript with
   JSDoc types, like the rest of the repository.
 
 ## IR v1
@@ -248,7 +248,7 @@ Reasons for the non-obvious rows:
   opaque, optional, read-only `HarperValue`, and the table has no upsert projection (see
   Projections). A typed blob reference replaces this when blob sync is designed.
 - **Any → `HarperValue`**: a closed JSON-like enum (`null/bool/int/double/string/bytes/array/
-object`) that is `Sendable`, `Hashable` and (Swift) `Codable`, so models stay value types.
+  object`) that is `Sendable`, `Hashable` and (Swift) `Codable`, so models stay value types.
 - **Bytes in Kotlin**: `ByteArray` has identity equality, so generated data classes that hold
   byte arrays, directly or in lists, override `equals`/`hashCode` with the runtime's
   `HarperContent`, which compares them by content; `HarperValue.BytesValue` compares by content.
